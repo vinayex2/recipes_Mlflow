@@ -29,15 +29,52 @@ prompt = mlflow.genai.load_prompt(name_or_uri=f"prompts:/{prompt_name}@productio
 # response = llm.invoke(prompt.format(question="How do I reset my password?"))
 print(prompt.format(question="How do I reset my password?"))
 
-client = OpenAI()
+# client = OpenAI()
 
-response = client.chat.completions.create(
-    model='gpt-4o-mini',
-    messages = [
-        {'role' :'user',
-         'content': prompt.format(question="How do I reset my password?")
-         }
+# response = client.chat.completions.create(
+#     model='gpt-4o-mini',
+#     messages = [
+#         {'role' :'user',
+#          'content': prompt.format(question="How do I reset my password?")
+#          }
+#     ]
+# )
+
+# print(response)
+
+def predict_fn(question):
+    """Define how to invoke the model"""
+    output = None
+    # try:    
+    #     response = client.chat.completions.create(
+    #         model='gpt-4o-mini',
+    #         messages = [
+    #             {'role' :'user',
+    #             'content': prompt.format(question=question)
+    #             }
+    #         ])
+    #     output = response.choices[0].message.content
+    # except:
+    #     print("Error")
+    output = "Default Output"
+    
+    return output
+
+#Evaluation of Model Output
+data = [
+    {
+        'inputs': {"question": "who invented telephone"},
+        'expectations': {"expected_response": "alexander graham bell"}
+    }
+]
+
+mlflow.genai.evaluate(
+    data=data,
+    predict_fn=predict_fn,
+    scorers = [
+        mlflow.genai.scorers.Correctness(),
+        mlflow.genai.scorers.Guidelines(name='is_professional', guidelines="Responses should be professional and respectful."),
+        # mlflow.genai.scorers.Relevance(name='is_relevant', relevance_threshold=0.7)
     ]
 )
 
-print(response)
