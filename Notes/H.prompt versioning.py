@@ -1,7 +1,12 @@
-%pip install --upgrade "mlflow[databricks]>=3.1.0"
-%restart_python
+# %pip install --upgrade "mlflow[databricks]>=3.1.0"
+# %pip install openai
+# %restart_python
 
 import mlflow
+from dotenv import load_dotenv
+from openai import OpenAI
+
+load_dotenv()
 
 # Register a prompt template
 prompt_name = "mlflow_experiments.genai.assistant_prompt"
@@ -23,3 +28,16 @@ mlflow.genai.set_prompt_alias(
 prompt = mlflow.genai.load_prompt(name_or_uri=f"prompts:/{prompt_name}@production")
 # response = llm.invoke(prompt.format(question="How do I reset my password?"))
 print(prompt.format(question="How do I reset my password?"))
+
+client = OpenAI()
+
+response = client.chat.completions.create(
+    model='gpt-4o-mini',
+    messages = [
+        {'role' :'user',
+         'content': prompt.format(question="How do I reset my password?")
+         }
+    ]
+)
+
+print(response)
