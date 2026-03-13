@@ -65,14 +65,36 @@ data = [
     {
         'inputs': {"question": "who invented telephone"},
         'expectations': {"expected_response": "alexander graham bell"}
+    },
+    {
+        'inputs': {"question": "who was the inventor of radium"},
+        'expectations': {"expected_response": "marie curie"}
+    },
+    {
+        'inputs': {"question": "who founded apple"},
+        'expectations': {"expected_response": "Default Output"}
     }
+
 ]
+
+from mlflow.genai import scorer
+from mlflow.entities import Feedback
+
+@scorer
+def exact_match_scorer(inputs, outputs, expectations):
+    """Define how to evaluate the model output"""
+    score = 0
+    if outputs == expectations['expected_response']:
+        score = 1
+    return score
+
 
 mlflow.genai.evaluate(
     data=data,
     predict_fn=predict_fn,
     scorers = [
         mlflow.genai.scorers.Correctness(),
+        exact_match_scorer,
         mlflow.genai.scorers.Guidelines(name='is_professional', guidelines="Responses should be professional and respectful."),
         # mlflow.genai.scorers.Relevance(name='is_relevant', relevance_threshold=0.7)
     ]
