@@ -1,1 +1,4 @@
-openai
+pypdf
+ollama
+mlflow
+databricks-agents
