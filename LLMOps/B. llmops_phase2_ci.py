@@ -69,18 +69,18 @@ except NameError:
         widgets = _FakeWidgets()
     dbutils = _FakeDbutils()  # noqa: F841
 
-GIT_SHA  = dbutils.widgets.get("git_sha",  "local")
-GIT_REF  = dbutils.widgets.get("git_ref",  "local")
-GIT_PR   = dbutils.widgets.get("git_pr",   "")
+%python
+GIT_SHA = dbutils.widgets.get("git_sha") if _in_databricks else "local"
+GIT_REF = dbutils.widgets.get("git_ref") if _in_databricks else "local"
+GIT_PR = dbutils.widgets.get("git_pr") if _in_databricks else ""
+
 
 # OPENAI_API_KEY is passed as a widget parameter (secret) from GitHub Actions.
 # In a production workspace you would use Databricks Secrets instead:
 # In a production workspace you would use Databricks Secrets instead:
 #   DATABRICKS_TOKEN = dbutils.secrets.get(scope="llmops", key="DATABRICKS_TOKEN")
-DATABRICKS_TOKEN = (
-    dbutils.widgets.get("DATABRICKS_TOKEN", "")
-    or os.environ.get("DATABRICKS_TOKEN", "")
-)
+DATABRICKS_TOKEN = dbutils.widgets.get("DATABRICKS_TOKEN") if _in_databricks else os.environ.get("DATABRICKS_TOKEN", "")
+
 if not DATABRICKS_TOKEN:
     raise ValueError(
         "DATABRICKS_TOKEN not found. Pass it as a widget parameter or set the "
