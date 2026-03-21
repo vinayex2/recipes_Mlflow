@@ -701,7 +701,7 @@ def register_best_candidate(
     artifacts = {"prompt_config": str(cfg_path)}
 
     # ── log and register ──────────────────────────────────────────────────────
-    with mlflow.start_run(run_name=f"register-{best_template.name}"):
+    with mlflow.start_run(run_name=f"register-{best_template.name}") as reg_run:
         mlflow.log_params(best_template.to_mlflow_params())
         mlflow.log_metrics({
             "composite_score"  : round(best_score, 3),
@@ -720,6 +720,9 @@ def register_best_candidate(
             inputs  = Schema([ColSpec(type="string", name="message")]),
             outputs = Schema([ColSpec(type="string", name="response")]),
         )
+
+        mlflow.log_artifact(str(cfg_path), artifact_path="prompt_config")
+        print(f"  Logged prompt_config artifact to run {reg_run.info.run_id[:8]}…")
 
         model_info = mlflow.pyfunc.log_model(
             name                    = "prompt_model",

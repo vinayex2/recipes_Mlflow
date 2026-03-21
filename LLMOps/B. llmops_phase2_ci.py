@@ -53,7 +53,7 @@ import yaml
 
 #required for discovering mlflow services in databricks
 import mlflow
-mlflow.set_registry_uri("databricks")
+mlflow.set_registry_uri("databricks-uc")
 
 # COMMAND ----------
 
@@ -222,95 +222,98 @@ def rule_eval(response: str, case: dict) -> RuleEvalResult:
 
 # COMMAND ----------
 
-# ════════════════════════════════════════════════════════════════════════════
-# 5.  LOAD CANDIDATE MODEL FROM MLFLOW REGISTRY
-#     We load the prompt template config from the registered model's artifact
-#     rather than using mlflow.pyfunc.load_model() so we can call the OpenAI
-#     API directly and capture raw latency + token counts for gate checks.
-# ════════════════════════════════════════════════════════════════════════════
-
-
-
-# Function to download model artifacts based on MLmodel file flavors section
-
-def download_flavor_artifact(model_name, model_alias, artifact_key):
+# DBTITLE 1,Fix MLflow artifact download for serverless
+def load_candidate_template() -> tuple[dict, str, str]:
     """
-    Download an artifact referenced by MLflow model flavor using model name, alias, artifact key.
-    Returns artifact content (for JSON) or local file path.
+    Load the prompt_config artifact from the MLflow Model Registry and
+    return (template_cfg, model_version, run_id).
+ 
+    Unity Catalog artifact resolution
+    ----------------------------------
+    On Databricks Free Edition with Unity Catalog, two approaches that look
+    correct but both fail:
+ 
+      1. mv.source  →  returns a models:/m-<uuid> internal URI.  Passing it
+         to download_artifacts triggers the deprecated get_latest_versions()
+         call, which UC rejects.
+ 
+      2. artifacts= dict in log_model() with code-based logging  →  on UC the
+         file is NOT copied into the run artifact store.  The path
+         runs:/<run_id>/prompt_model/artifacts/prompt_config does not exist.
+ 
+    The reliable approach: Phase 1 now explicitly calls
+        mlflow.log_artifact(cfg_path, artifact_path="prompt_config")
+    inside the registration run, which always writes to:
+        runs:/<run_id>/prompt_config/<filename>.json
+ 
+    We download from that path using the runs:/ scheme, which UC resolves
+    through the tracking server without touching the model registry stage API.
     """
-    client = mlflow.MlflowClient()
-    mv = client.get_model_version_by_alias(model_name, model_alias)
-    
-    mv = client.get_model_version_by_alias(model_name, model_alias)
-    run_id = mv.run_id
-    mlmodel_path = mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{run_id}/MLmodel")
-
-    # Download MLmodel file
-    # mlmodel_path = mlflow.artifacts.download_artifacts(artifact_uri=f"{model_uri}/MLmodel")
-    with open(mlmodel_path, "r") as mlmodel_file:
-        mlmodel_file_content = mlmodel_file.read()
-        print("MLmodel raw content:\n", mlmodel_file_content[:500])
-        try:
-            mlmodel = yaml.safe_load(mlmodel_file_content)
-        except Exception as e:
-            print(f"Error: Could not parse MLmodel as YAML: {e}")
-            return None
-
-    # Navigate to desired artifact path in flavors
-    flavors = mlmodel.get("flavors", {})
-    pyfunc = flavors.get("python_function", {})
-    artifacts_dict = pyfunc.get("artifacts", {})
-    artifact_info = artifacts_dict.get(artifact_key, {})
-    artifact_rel_path = artifact_info.get("path")
-    if not artifact_rel_path:
-        raise FileNotFoundError(f"Artifact {artifact_key!r} not found in MLmodel 'flavors.artifacts'.")
-
-    # Download the artifact file
-    # artifact_full_path = mlflow.artifacts.download_artifacts(artifact_uri=f"{model_uri}/{artifact_rel_path}")
-        
-    artifact_full_path = mlflow.artifacts.download_artifacts(artifact_uri=f"runs:/{run_id}/{artifact_rel_path}")
-    
-    # Dump and print the artifact file raw content
-    with open(artifact_full_path, 'r') as f:
-        artifact_file_content = f.read()
-        print(f"\nArtifact ({artifact_key}) raw content:\n", artifact_file_content[:500])
-
-    # Return JSON if file ends with .json
-    if artifact_full_path.endswith('.json'):
-        try:
-            import json
-            return json.loads(artifact_file_content)
-        except Exception as e:
-            print(f"Error: Artifact is not valid JSON: {e}")
-            return None
-    return artifact_full_path
-
-def load_candidate_template() -> dict:
-    """
-    Download the prompt_config artifact from the candidate model version
-    and return it as a dict.  We deliberately avoid mlflow.pyfunc.load_model()
-    here so we retain fine-grained control over the API call (timing, usage).
-    """
-    client_mlflow = mlflow.MlflowClient()
-
-    # Resolve the 'candidate' alias to a concrete version
+    mlflow_client = mlflow.MlflowClient()
+ 
+    # ── 1. Resolve alias → concrete model version ─────────────────────────────
     try:
-        mv = client_mlflow.get_model_version_by_alias(MODEL_NAME, MODEL_ALIAS)
+        mv = mlflow_client.get_model_version_by_alias(MODEL_NAME, MODEL_ALIAS)
     except mlflow.exceptions.MlflowException as exc:
         raise RuntimeError(
             f"Could not find model '{MODEL_NAME}' with alias '{MODEL_ALIAS}'. "
             f"Run Phase 1 first to register a candidate.\n{exc}"
         ) from exc
-
-    version    = mv.version
-    run_id     = mv.run_id
-    print(f"Loaded candidate: {MODEL_NAME} v{version}  (run_id={run_id[:8]}…)")
-
-    template_cfg = download_flavor_artifact(MODEL_NAME, MODEL_ALIAS, "prompt_config")    
-
-    print(f"Template: {template_cfg['name']} v{template_cfg['version']}")
+ 
+    version = mv.version
+    run_id  = mv.run_id
+    print(f"Candidate model : {MODEL_NAME}  version={version}  run_id={run_id[:8]}…")
+ 
+    # ── 2. Download using runs:/ URI constructed from run_id ─────────────────
+    # This path is written by mlflow.log_artifact(cfg_path, artifact_path="prompt_config")
+    # inside the registration run in Phase 1.  The runs:/ scheme routes through
+    # the MLflow tracking server and is fully supported by Unity Catalog.
+    artifact_uri = f"runs:/{run_id}/prompt_config"
+    print(f"Downloading from : {artifact_uri}")
+ 
+    try:
+        local_dir = mlflow.artifacts.download_artifacts(artifact_uri=artifact_uri)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Could not download prompt_config artifact.\n"
+            f"  URI tried: {artifact_uri}\n"
+            f"  Error    : {exc}\n\n"
+            "Diagnosis checklist:\n"
+            "  1. Did Phase 1 complete successfully and log the registration run?\n"
+            "  2. Is the run_id correct? Check MLflow UI → Experiments → "
+            f"the run with run_id starting '{run_id[:8]}'.\n"
+            "  3. In that run's Artifacts tab, is 'prompt_config/' present?\n"
+            "     If not, re-run Phase 1 — the updated version logs it explicitly."
+        ) from exc
+ 
+    # ── 3. Locate the JSON file ───────────────────────────────────────────────
+    cfg_files = list(Path(local_dir).glob("*.json"))
+    if not cfg_files:
+        raise FileNotFoundError(
+            f"Downloaded directory is empty or contains no JSON files.\n"
+            f"Directory: {local_dir}\n"
+            f"Contents : {list(Path(local_dir).iterdir())}"
+        )
+ 
+    cfg_path = max(cfg_files, key=lambda p: p.stat().st_mtime)
+    print(f"Reading config   : {cfg_path.name}")
+ 
+    with open(cfg_path) as f:
+        template_cfg = json.load(f)
+ 
+    # ── 4. Validate required fields ───────────────────────────────────────────
+    required = {"name", "version", "system", "model", "temperature", "max_tokens"}
+    missing  = required - set(template_cfg.keys())
+    if missing:
+        raise ValueError(
+            f"prompt_config JSON is missing required fields: {missing}\n"
+            f"Found keys: {list(template_cfg.keys())}"
+        )
+ 
+    print(f"Template         : {template_cfg['name']} v{template_cfg['version']}")
+    print(f"Model            : {template_cfg['model']}")
+    print(f"Few-shot examples: {len(template_cfg.get('few_shots', []))}")
     return template_cfg, version, run_id
-
 
 template_cfg, candidate_version, candidate_run_id = load_candidate_template()
 
