@@ -38,7 +38,10 @@ import mlflow
 import mlflow.pyfunc
 import tiktoken
 from dotenv import load_dotenv
-import dbutils
+from prompt_model import PromptTemplate
+from mlflow.models.signature import ModelSignature
+from mlflow.types.schema import Schema, ColSpec
+# import dbutils
 
 
 # 0.  CONFIGURATION
@@ -51,7 +54,7 @@ load_dotenv()
 # DATABRICKS_HOST / DATABRICKS_TOKEN in your env.
 # For local dev: leave as-is; runs land in ./mlruns
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "mlruns")
-EXPERIMENT_NAME     = os.getenv("MLFLOW_EXPERIMENT_NAME", "llmops/phase1-local-dev")
+EXPERIMENT_NAME     = os.getenv("MLFLOW_EXPERIMENT_NAME", "llmops-phase1-local-dev")
 DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN')
 
 # mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
@@ -65,14 +68,14 @@ client = OpenAI(
     base_url = os.getenv("GEMINI_ENDPOINT"),   # None → defaults to api.openai.com
 )
 
-# ── Token counter (approximation for non-OpenAI models) ─────────────────────
-try:
-    _enc = tiktoken.get_encoding("cl100k_base")
-    def count_tokens(text: str) -> int:
-        return len(_enc.encode(text))
-except Exception:
-    def count_tokens(text: str) -> int:          # fallback: word heuristic
-        return int(len(text.split()) * 1.3)
+# # ── Token counter (approximation for non-OpenAI models) ─────────────────────
+# try:
+#     _enc = tiktoken.get_encoding("cl100k_base")
+#     def count_tokens(text: str) -> int:
+#         return len(_enc.encode(text))
+# except Exception:
+#     def count_tokens(text: str) -> int:          # fallback: word heuristic
+#         return int(len(text.split()) * 1.3)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -81,48 +84,48 @@ except Exception:
 #     Treat these like code: version-controlled, tested in isolation.
 # ════════════════════════════════════════════════════════════════════════════
 
-@dataclass
-class PromptTemplate:
-    """
-    A versioned prompt configuration.
+# @dataclass
+# class PromptTemplate:
+#     """
+#     A versioned prompt configuration.
 
-    Attributes
-    ----------
-    name        : short slug used in MLflow run tags
-    version     : semver string — bump on any edit
-    system      : the system prompt sent to the model
-    few_shots   : list of {"role": ..., "content": ...} example turns
-    temperature : sampling temperature
-    max_tokens  : token budget for the completion
-    model       : model identifier string
-    """
-    name        : str
-    version     : str
-    system      : str
-    few_shots   : list[dict]  = field(default_factory=list)
-    temperature : float       = 0.3
-    max_tokens  : int         = 1024
-    model       : str         = "gemini_3_1_flash_Newer"
+#     Attributes
+#     ----------
+#     name        : short slug used in MLflow run tags
+#     version     : semver string — bump on any edit
+#     system      : the system prompt sent to the model
+#     few_shots   : list of {"role": ..., "content": ...} example turns
+#     temperature : sampling temperature
+#     max_tokens  : token budget for the completion
+#     model       : model identifier string
+#     """
+#     name        : str
+#     version     : str
+#     system      : str
+#     few_shots   : list[dict]  = field(default_factory=list)
+#     temperature : float       = 0.3
+#     max_tokens  : int         = 1024
+#     model       : str         = "gemini_3_1_flash_Newer"
 
-    # ── derived ──────────────────────────────────────────────────────────────
-    @property
-    def config_hash(self) -> str:
-        """Stable hash of the prompt config — useful for deduplication."""
-        payload = json.dumps(asdict(self), sort_keys=True).encode()
-        return hashlib.sha256(payload).hexdigest()[:12]
+#     # ── derived ──────────────────────────────────────────────────────────────
+#     @property
+#     def config_hash(self) -> str:
+#         """Stable hash of the prompt config — useful for deduplication."""
+#         payload = json.dumps(asdict(self), sort_keys=True).encode()
+#         return hashlib.sha256(payload).hexdigest()[:12]
 
-    def to_mlflow_params(self) -> dict:
-        """Flat dict suitable for mlflow.log_params()."""
-        return {
-            "template.name"        : self.name,
-            "template.version"     : self.version,
-            "template.config_hash" : self.config_hash,
-            "model"                : self.model,
-            "temperature"          : self.temperature,
-            "max_tokens"           : self.max_tokens,
-            "few_shot_count"       : len(self.few_shots),
-            "system_token_count"   : count_tokens(self.system),
-        }
+#     def to_mlflow_params(self) -> dict:
+#         """Flat dict suitable for mlflow.log_params()."""
+#         return {
+#             "template.name"        : self.name,
+#             "template.version"     : self.version,
+#             "template.config_hash" : self.config_hash,
+#             "model"                : self.model,
+#             "temperature"          : self.temperature,
+#             "max_tokens"           : self.max_tokens,
+#             "few_shot_count"       : len(self.few_shots),
+#             "system_token_count"   : count_tokens(self.system),
+#         }
 
 
 # ── Template A: zero-shot customer support agent ─────────────────────────────
@@ -309,34 +312,34 @@ GOLDEN_DATASET = [
         "must_not_contain": ["competitor", "I cannot help"],
         "max_words"       : 160,
     },
-    {
-        "id"              : "eval-002",
-        "user_message"    : "My invoice shows the wrong amount, what do I do?",
-        "expected_topics" : ["invoice", "billing", "support", "contact"],
-        "must_not_contain": [],
-        "max_words"       : 160,
-    },
-    {
-        "id"              : "eval-003",
-        "user_message"    : "Does Acme integrate with Salesforce?",
-        "expected_topics" : ["integrat", "salesforce"],
-        "must_not_contain": [],
-        "max_words"       : 160,
-    },
-    {
-        "id"              : "eval-004",
-        "user_message"    : "What is the capital of France?",   # out-of-scope
-        "expected_topics" : ["don't know", "cannot", "outside", "Acme"],
-        "must_not_contain": ["Paris"],   # should NOT answer off-topic questions
-        "max_words"       : 120,
-    },
-    {
-        "id"              : "eval-005",
-        "user_message"    : "How do I add a team member to my account?",
-        "expected_topics" : ["team", "member", "invite", "add", "account"],
-        "must_not_contain": [],
-        "max_words"       : 160,
-    },
+    # {
+    #     "id"              : "eval-002",
+    #     "user_message"    : "My invoice shows the wrong amount, what do I do?",
+    #     "expected_topics" : ["invoice", "billing", "support", "contact"],
+    #     "must_not_contain": [],
+    #     "max_words"       : 160,
+    # },
+    # {
+    #     "id"              : "eval-003",
+    #     "user_message"    : "Does Acme integrate with Salesforce?",
+    #     "expected_topics" : ["integrat", "salesforce"],
+    #     "must_not_contain": [],
+    #     "max_words"       : 160,
+    # },
+    # {
+    #     "id"              : "eval-004",
+    #     "user_message"    : "What is the capital of France?",   # out-of-scope
+    #     "expected_topics" : ["don't know", "cannot", "outside", "Acme"],
+    #     "must_not_contain": ["Paris"],   # should NOT answer off-topic questions
+    #     "max_words"       : 120,
+    # },
+    # {
+    #     "id"              : "eval-005",
+    #     "user_message"    : "How do I add a team member to my account?",
+    #     "expected_topics" : ["team", "member", "invite", "add", "account"],
+    #     "must_not_contain": [],
+    #     "max_words"       : 160,
+    # },
 ]
 
 
@@ -644,7 +647,7 @@ def run_experiment(
 def register_best_candidate(
     summaries       : list[dict],
     templates       : list[PromptTemplate],
-    model_name      : str = "llmops/support-agent",
+    model_name      : str = "llmops_support_agent",
     score_threshold : float = 0.70,
 ) -> Optional[str]:
     """
@@ -677,41 +680,21 @@ def register_best_candidate(
 
     print(f"  ✓ Above threshold — registering in MLflow Model Registry…")
 
-    # ── wrap prompt config as a pyfunc model ─────────────────────────────────
-    class PromptConfigModel(mlflow.pyfunc.PythonModel):
-        """
-        A pyfunc wrapper that stores the prompt template as model artifacts
-        and exposes a predict() interface: input df with 'message' column,
-        output list of LLM responses.
+    # ── resolve path to the standalone model file ─────────────────────────────
+    # prompt_model.py must sit alongside this script. MLflow loads it in a
+    # fresh interpreter, so it must be fully self-contained (no imports from
+    # this notebook). This is MLflow's "code-based logging" approach, required
+    # since MLflow 2.12 for PythonModel subclasses that can't be pickled.
+    # _this_dir      = Path(__file__).parent
+    _this_dir = os.getcwd()
+    model_code_path = Path(_this_dir) / "prompt_model.py"
+    if not model_code_path.exists():
+        raise FileNotFoundError(
+            f"prompt_model.py not found at {model_code_path}. "
+            "It must live in the same directory as this script."
+        )
 
-        In production this class gets loaded by mlflow.pyfunc.load_model()
-        and called via .predict(). The model is the *prompt config*, not weights.
-        """
-
-        def load_context(self, context):
-            cfg_path = context.artifacts["prompt_config"]
-            with open(cfg_path) as f:
-                cfg = json.load(f)
-            self.template = PromptTemplate(**cfg)
-            self._client  = OpenAI(
-                api_key  = DATABRICKS_TOKEN,
-                base_url = os.getenv("GEMINI_ENDPOINT"),
-            )
-
-        def predict(self, context, model_input):
-            messages = (
-                model_input["message"].tolist()
-                if hasattr(model_input, "tolist")
-                else list(model_input["message"])
-            )
-            results = []
-            for msg in messages:
-                conv  = Conversation(template=self.template)
-                reply = conv.chat(msg)
-                results.append(reply)
-            return results
-
-    # ── persist template as artifact file ────────────────────────────────────
+    # ── persist the winning template as a JSON artifact ───────────────────────
     cfg_path = Path("/tmp") / f"prompt_config_{best_template.config_hash}.json"
     cfg_path.write_text(json.dumps(asdict(best_template), indent=2))
 
@@ -730,17 +713,27 @@ def register_best_candidate(
             "template.config_hash": best_template.config_hash,
         })
 
+        # code-based logging: pass the .py file, not an instantiated class.
+        # MLflow stores the source file inside the model artifact directory and
+        # imports PromptConfigModel from it at load time — no pickling needed.
+        signature = ModelSignature(
+            inputs  = Schema([ColSpec(type="string", name="message")]),
+            outputs = Schema([ColSpec(type="string", name="response")]),
+        )
+
         model_info = mlflow.pyfunc.log_model(
-            artifact_path   = "prompt_model",
-            python_model    = PromptConfigModel(),
-            artifacts       = artifacts,
+            name                    = "prompt_model",
+            python_model          = str(model_code_path),   # ← path, not instance
+            artifacts             = artifacts,
             registered_model_name = model_name,
-            pip_requirements= ["openai", "mlflow"],
+            pip_requirements      = ["openai", "mlflow"],
+            signature               = signature,
         )
 
     uri = model_info.model_uri
     print(f"  Registered: {uri}")
     print(f"  Model name: {model_name}")
+    print(f"  Load with : mlflow.pyfunc.load_model('{uri}')")
     return uri
 
 
@@ -843,7 +836,7 @@ def main():
     uri = register_best_candidate(
         summaries       = summaries,
         templates       = TEMPLATES,
-        model_name      = "llmops/support-agent",
+        model_name      = "llmops_support_agent",
         score_threshold = 0.60,
     )
     if uri:
