@@ -8,7 +8,7 @@ __pycache__/
 
 # Documents
 *.pdf
-Notes / hf_model_files / *
+/Notes/hf_model_files / *
 
 # Distribution / packaging
 .Python
