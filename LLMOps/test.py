@@ -1,32 +1,43 @@
 from openai import OpenAI
 import os
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 
-load_dotenv()
+# load_dotenv()
 
 # How to get your Databricks token: https://docs.databricks.com/en/dev-tools/auth/pat.html
-DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN')
+# DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN')
 # Alternatively in a Databricks notebook you can use this:
 # DATABRICKS_TOKEN = dbutils.notebook.entry_point.getDbutils().notebook().getContext().apiToken().get()
 
-client = OpenAI(
-  api_key=DATABRICKS_TOKEN,
-  base_url=os.environ.get('GEMINI_ENDPOINT')
-)
+# client = OpenAI(
+#   api_key=DATABRICKS_TOKEN,
+#   base_url=os.environ.get('GEMINI_ENDPOINT')
+# )
 
-chat_completion = client.chat.completions.create(
-  messages=[
-  {
-    "role": "system",
-    "content": "You are an AI assistant"
-  },
-  {
-    "role": "user",
-    "content": "Tell me about Large Language Models"
-  }
-  ],
-  model="gemini_3_1_flash_Newer",
-  max_tokens=256
-)
+# chat_completion = client.chat.completions.create(
+#   messages=[
+#   {
+#     "role": "system",
+#     "content": "You are an AI assistant"
+#   },
+#   {
+#     "role": "user",
+#     "content": "Tell me about Large Language Models"
+#   }
+#   ],
+#   model="gemini_3_1_flash_Newer",
+#   max_tokens=256
+# )
 
-print(chat_completion.choices[0].message.content)
+# print(chat_completion.choices[0].message.content)
+
+import mlflow
+import pandas as pd
+
+model_uri = 'models:/m-2b8072d6a04748d1b3ae73fcbaf4cd11'
+model = mlflow.pyfunc.load_model(model_uri)
+
+data = {"message": ["Kenobi: Hello there! Can you tell me about your catalog?"]}
+# Predict on a Pandas DataFrame.
+
+model.predict(pd.DataFrame(data))
