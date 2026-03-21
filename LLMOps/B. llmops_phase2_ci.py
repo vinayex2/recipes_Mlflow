@@ -70,11 +70,11 @@ GIT_PR   = dbutils.widgets.get("git_pr",   "")
 # OPENAI_API_KEY is passed as a widget parameter (secret) from GitHub Actions.
 # In a production workspace you would use Databricks Secrets instead:
 #   DATABRICKS_TOKEN = dbutils.secrets.get(scope="llmops", key="DATABRICKS_TOKEN")
-OPENAI_API_KEY = (
+DATABRICKS_TOKEN = (
     dbutils.widgets.get("DATABRICKS_TOKEN", "")
     or os.environ.get("DATABRICKS_TOKEN", "")
 )
-if not OPENAI_API_KEY:
+if not DATABRICKS_TOKEN:
     raise ValueError(
         "DATABRICKS_TOKEN not found. Pass it as a widget parameter or set the "
         "env var. In production use dbutils.secrets."
@@ -97,7 +97,7 @@ MODEL_ALIAS     = os.getenv("MLFLOW_MODEL_ALIAS",     "candidate")
 mlflow.set_experiment(EXPERIMENT_NAME)
 
 client = OpenAI(
-    api_key  = OPENAI_API_KEY,
+    api_key  = DATABRICKS_TOKEN,
     base_url = os.getenv("GEMINI_ENDPOINT"),
 )
 

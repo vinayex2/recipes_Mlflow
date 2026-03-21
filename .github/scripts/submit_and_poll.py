@@ -66,7 +66,8 @@ def submit_run() -> str:
                 "git_sha"       : os.environ.get("GIT_SHA",  ""),
                 "git_ref"       : os.environ.get("GIT_REF",  ""),
                 "git_pr"        : os.environ.get("GIT_PR",   ""),
-                "openai_api_key": os.environ.get("OPENAI_API_KEY", ""),
+                "DATABRICKS_TOKEN": os.environ.get("DATABRICKS_TOKEN", ""),
+                "GEMINI_ENDPOINT": os.environ.get("GEMINI_ENDPOINT", ""),
             },
         },
         "libraries": [
