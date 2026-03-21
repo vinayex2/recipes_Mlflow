@@ -37,7 +37,7 @@ HEADERS = {
 
 # Path of the CI notebook inside your Databricks workspace.
 # Upload llmops_phase2_ci.py to this path via the Databricks UI or CLI.
-NOTEBOOK_PATH = "/Workspace/Users/vasaicrow@gmail.com/recipes_Mlflow/LLMOps/llmops_phase2_ci"
+NOTEBOOK_PATH = "/Workspace/Users/vasaicrow@gmail.com/recipes_Mlflow/LLMOps/B. llmops_phase2_ci"
 
 POLL_INTERVAL_S = 20    # seconds between status checks
 MAX_WAIT_S      = 1800  # 30 minutes
