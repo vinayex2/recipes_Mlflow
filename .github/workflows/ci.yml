@@ -47,10 +47,10 @@ jobs:
       # ── 3. Submit notebook run to Databricks CE + poll for result ────────────
       - name: Submit and poll Databricks CI notebook
         env:
-          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-          OPENAI_API_KEY:   ${{ secrets.OPENAI_API_KEY }}
+          DATABRICKS_HOST:  ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}          
           GIT_SHA:          ${{ github.sha }}
           GIT_REF:          ${{ github.ref }}
           GIT_PR:           ${{ github.event.pull_request.number || '' }}
+          GEMINI_ENDPOINT:  ${{ secrets.GEMINI_ENDPOINT }}
         run: python .github/scripts/submit_and_poll.py
