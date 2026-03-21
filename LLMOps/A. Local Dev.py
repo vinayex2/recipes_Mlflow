@@ -30,12 +30,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+
 # ── third-party ─────────────────────────────────────────────────────────────
-import anthropic
+# import anthropic
+from openai import OpenAI
 import mlflow
 import mlflow.pyfunc
 import tiktoken
 from dotenv import load_dotenv
+import dbutils
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -48,14 +51,19 @@ load_dotenv()
 # For Databricks: set MLFLOW_TRACKING_URI="databricks" and configure
 # DATABRICKS_HOST / DATABRICKS_TOKEN in your env.
 # For local dev: leave as-is; runs land in ./mlruns
-MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "mlruns")
-EXPERIMENT_NAME     = os.getenv("MLFLOW_EXPERIMENT_NAME", "llmops/phase1-local-dev")
+# MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "mlruns")
+# EXPERIMENT_NAME     = os.getenv("MLFLOW_EXPERIMENT_NAME", "llmops/phase1-local-dev")
 
-mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-mlflow.set_experiment(EXPERIMENT_NAME)
+# mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+# mlflow.set_experiment(EXPERIMENT_NAME)
+DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN')
 
 # ── LLM client ──────────────────────────────────────────────────────────────
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+# client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+client = OpenAI(
+  api_key=DATABRICKS_TOKEN,
+  base_url=os.environ.get('GEMINI_ENDPOINT')
+)
 
 # ── Token counter (approximation for non-OpenAI models) ─────────────────────
 try:
@@ -94,7 +102,7 @@ class PromptTemplate:
     few_shots   : list[dict]  = field(default_factory=list)
     temperature : float       = 0.3
     max_tokens  : int         = 1024
-    model       : str         = "claude-sonnet-4-20250514"
+    model       : str         = "gemini-3-1-flash-lite-preview"
 
     # ── derived ──────────────────────────────────────────────────────────────
     @property
@@ -410,10 +418,10 @@ class JudgeResult:
 
 
 def llm_judge(user_message: str, response: str, eval_id: str,
-              judge_model: str = "claude-haiku-4-5-20251001") -> JudgeResult:
+              judge_model: str = "gemini-3-1-flash-lite-preview") -> JudgeResult:
     """
     Use a separate LLM to score a response on four rubric dimensions.
-    Cheaper models (Haiku) work well as judges for structured scoring.
+    Cheaper models work well as judges for structured scoring.
     """
     prompt = (
         f"USER MESSAGE:\n{user_message}\n\n"
@@ -675,9 +683,9 @@ def register_best_candidate(
             with open(cfg_path) as f:
                 cfg = json.load(f)
             self.template = PromptTemplate(**cfg)
-            self._client  = anthropic.Anthropic(
-                api_key=os.getenv("ANTHROPIC_API_KEY")
-            )
+            self._client  = OpenAI(api_key=DATABRICKS_TOKEN,
+                                   base_url=os.environ.get('GEMINI_ENDPOINT')
+                                   )
 
         def predict(self, context, model_input):
             messages = (
@@ -716,7 +724,7 @@ def register_best_candidate(
             python_model    = PromptConfigModel(),
             artifacts       = artifacts,
             registered_model_name = model_name,
-            pip_requirements= ["anthropic", "mlflow"],
+            pip_requirements= ["openai", "mlflow"],
         )
 
     uri = model_info.model_uri
@@ -791,9 +799,11 @@ def interactive_demo(template: PromptTemplate = TEMPLATE_FEW_SHOT):
 # ════════════════════════════════════════════════════════════════════════════
 
 def main():
+    MLFLOW_TRACKING_URI = mlflow.get_tracking_uri()
+
     print("\nLLMOps Phase 1 — Local Experiment Runner")
     print(f"MLflow tracking URI : {MLFLOW_TRACKING_URI}")
-    print(f"Experiment          : {EXPERIMENT_NAME}")
+    print(f"Experiment          : {dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()}")
     print(f"Templates to test   : {[t.name for t in TEMPLATES]}")
     print(f"Eval cases          : {len(GOLDEN_DATASET)}")
 
