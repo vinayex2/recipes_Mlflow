@@ -47,7 +47,7 @@ from openai import OpenAI
 # ════════════════════════════════════════════════════════════════════════════
 # 0.  NOTEBOOK PARAMETERS
 #     Read CI context injected by the GitHub Actions workflow.
-#     When running manually from the UI, defaults are used.
+#     When running manually from the UI, defaults are used. 
 # ════════════════════════════════════════════════════════════════════════════
 
 # dbutils is available in the Databricks runtime; provide fallbacks for
