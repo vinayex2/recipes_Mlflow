@@ -86,12 +86,20 @@ GIT_PR = dbutils.widgets.get("git_pr") if _in_databricks else ""
 # In a production workspace you would use Databricks Secrets instead:
 #   DATABRICKS_TOKEN = dbutils.secrets.get(scope="llmops", key="DATABRICKS_TOKEN")
 DATABRICKS_TOKEN = dbutils.widgets.get("DATABRICKS_TOKEN") if _in_databricks else os.environ.get("DATABRICKS_TOKEN", "")
+GEMINI_ENDPOINT = dbutils.widgets.get("GEMINI_ENDPOINT") if _in_databricks else os.environ.get("GEMINI_ENDPOINT", "")
+
 
 if not DATABRICKS_TOKEN:
     raise ValueError(
         "DATABRICKS_TOKEN not found. Pass it as a widget parameter or set the "
         "env var. In production use dbutils.secrets."
     )
+
+if not GEMINI_ENDPOINT:
+    raise ValueError(
+        "GEMINI_ENDPOINT not found. Pass it as a widget parameter or set the "
+        "env var. In production use dbutils.secrets."
+    )    
 
 print(f"CI context  — SHA={GIT_SHA[:12]}  ref={GIT_REF}  PR={GIT_PR or 'none'}")
 
@@ -111,7 +119,7 @@ MODEL_ALIAS     = os.getenv("MLFLOW_MODEL_ALIAS",     "candidate")
 
 client = OpenAI(
     api_key  = DATABRICKS_TOKEN,
-    base_url = os.getenv("GEMINI_ENDPOINT"),
+    base_url = GEMINI_ENDPOINT,
 )
 
 # COMMAND ----------
