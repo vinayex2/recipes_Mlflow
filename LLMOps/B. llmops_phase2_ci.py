@@ -27,7 +27,7 @@
 # for notebook tasks on serverless compute in Databricks Free Edition.
 # %pip must be in the first command cell; it restarts the Python kernel.
 
-%pip install -q openai>=1.30.0 tiktoken>=0.7.0 mlflow
+%pip install -q openai>=1.30.0 tiktoken>=0.7.0
 
 # COMMAND ----------
 
@@ -50,8 +50,9 @@ from openai import OpenAI
 
 # COMMAND ----------
 
+#required for discovering mlflow services in databricks
 import mlflow
-     mlflow.set_registry_uri("databricks-mlflow://")
+mlflow.set_registry_uri("databricks-mlflow://")
 
 # COMMAND ----------
 
