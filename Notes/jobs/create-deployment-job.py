@@ -62,6 +62,9 @@ job_settings = jobs.JobSettings(
     parameters=[
         jobs.JobParameter(name="model_name", default=model_name),
         jobs.JobParameter(name="model_version", default=model_version),
+        jobs.JobParameter(name="open_ai_key", default = ""),
+        jobs.JobParameter(name="db_token", default = ""),        
+    
     ],
     queue=jobs.QueueSettings(enabled=True),
     max_concurrent_runs=1,
