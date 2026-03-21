@@ -34,7 +34,7 @@ import os
 import mlflow
 import pandas as pd
 
-model_uri = 'models:/m-2b8072d6a04748d1b3ae73fcbaf4cd11'
+model_uri = 'models:/m-1ddd7e3196f64b60867f14ad0f3810f8'
 model = mlflow.pyfunc.load_model(model_uri)
 
 data = {"message": ["Kenobi: Hello there! Can you tell me about your catalog?"]}

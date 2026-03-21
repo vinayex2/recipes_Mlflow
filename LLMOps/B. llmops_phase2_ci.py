@@ -27,7 +27,7 @@
 # for notebook tasks on serverless compute in Databricks Free Edition.
 # %pip must be in the first command cell; it restarts the Python kernel.
 
-%pip install -q openai>=1.30.0 tiktoken>=0.7.0
+%pip install -q openai>=1.30.0 tiktoken>=0.7.0 pyyaml
 
 # COMMAND ----------
 
@@ -47,6 +47,7 @@ from typing import Optional
 import mlflow
 import mlflow.pyfunc
 from openai import OpenAI
+import yaml
 
 # COMMAND ----------
 
@@ -228,6 +229,56 @@ def rule_eval(response: str, case: dict) -> RuleEvalResult:
 #     API directly and capture raw latency + token counts for gate checks.
 # ════════════════════════════════════════════════════════════════════════════
 
+
+
+# Function to download model artifacts based on MLmodel file flavors section
+
+def download_flavor_artifact(model_name, model_alias, artifact_key):
+    """
+    Download an artifact referenced by MLflow model flavor using model name, alias, artifact key.
+    Returns artifact content (for JSON) or local file path.
+    """
+    client = mlflow.MlflowClient()
+    mv = client.get_model_version_by_alias(model_name, model_alias)
+    model_uri = f"models:/{model_name}/{mv.version}"
+
+    # Download MLmodel file from the model URI
+    mlmodel_path = mlflow.artifacts.download_artifacts(artifact_uri=f"{model_uri}/MLmodel")
+    with open(mlmodel_path, "r") as mlmodel_file:
+        mlmodel_file_content = mlmodel_file.read()
+        print("MLmodel raw content:\n", mlmodel_file_content[:500])
+        try:
+            mlmodel = yaml.safe_load(mlmodel_file_content)
+        except Exception as e:
+            print(f"Error: Could not parse MLmodel as YAML: {e}")
+            return None
+
+    # Navigate to desired artifact path in flavors
+    flavors = mlmodel.get("flavors", {})
+    pyfunc = flavors.get("python_function", {})
+    artifacts = pyfunc.get("artifacts", {})
+    artifact_info = artifacts.get(artifact_key, {})
+    artifact_rel_path = artifact_info.get("path")
+    if not artifact_rel_path:
+        raise FileNotFoundError(f"Artifact {artifact_key!r} not found in MLmodel 'flavors.artifacts'.")
+
+    # Download the artifact file
+    artifact_full_path = mlflow.artifacts.download_artifacts(artifact_uri=f"{model_uri}/{artifact_rel_path}")
+    # Dump and print the artifact file raw content
+    with open(artifact_full_path, 'r') as f:
+        artifact_file_content = f.read()
+        print(f"\nArtifact ({artifact_key}) raw content:\n", artifact_file_content[:500])
+
+    # Return JSON if file ends with .json
+    if artifact_full_path.endswith('.json'):
+        try:
+            import json
+            return json.loads(artifact_file_content)
+        except Exception as e:
+            print(f"Error: Artifact is not valid JSON: {e}")
+            return None
+    return artifact_full_path
+
 def load_candidate_template() -> dict:
     """
     Download the prompt_config artifact from the candidate model version
@@ -249,31 +300,7 @@ def load_candidate_template() -> dict:
     run_id     = mv.run_id
     print(f"Loaded candidate: {MODEL_NAME} v{version}  (run_id={run_id[:8]}…)")
 
-    # Get the run to access tags
-    run = mlflow.MlflowClient().get_run(run_id)
-
-    # Extract the config hash from tags
-    config_hash = run.data.tags.get("template.config_hash", "")
-
-    # Construct the correct artifact path with the hash suffix
-    artifact_path = f"prompt_config_{config_hash}" if config_hash else "prompt_config"
-
-    # Download the artifact using the correct path
-    artifact = mlflow.MlflowClient().download_artifacts(run_id, artifact_path)
-
-    # Download the prompt_config JSON artifact
-    # artifact_dir = mlflow.artifacts.download_artifacts(
-    #     run_id        = run_id,
-    #     artifact_path = "prompt_config",
-    # )
-    cfg_files = list(Path(artifact_dir).glob("*.json"))
-    if not cfg_files:
-        raise FileNotFoundError(
-            f"No prompt_config JSON found in artifacts for run {run_id}. "
-            "Ensure Phase 1 logged the template artifact correctly."
-        )
-    with open(cfg_files[0]) as f:
-        template_cfg = json.load(f)
+    template_cfg = download_flavor_artifact(MODEL_NAME, MODEL_ALIAS, "prompt_config")    
 
     print(f"Template: {template_cfg['name']} v{template_cfg['version']}")
     return template_cfg, version, run_id
