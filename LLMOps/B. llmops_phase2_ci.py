@@ -556,13 +556,13 @@ if _in_databricks:
         mlflow_client.set_model_version_tag(
             name    = MODEL_NAME,
             version = candidate_version,
-            key     = "ci.last_result",
+            key     = "ci_last_result",
             value   = "PASS" if all_gates_passed else "FAIL",
         )
         mlflow_client.set_model_version_tag(
             name    = MODEL_NAME,
             version = candidate_version,
-            key     = "ci.last_run_id",
+            key     = "ci_last_run_id",
             value   = ci_run.info.run_id,
         )
         print(f"Model version {candidate_version} tagged with ci.last_result="
