@@ -100,7 +100,7 @@ EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "llmops/phase2-ci")
 MODEL_NAME      = os.getenv("MLFLOW_MODEL_NAME",      "llmops/support-agent")
 MODEL_ALIAS     = os.getenv("MLFLOW_MODEL_ALIAS",     "candidate")
 
-mlflow.set_experiment(EXPERIMENT_NAME)
+# mlflow.set_experiment(EXPERIMENT_NAME)
 
 client = OpenAI(
     api_key  = DATABRICKS_TOKEN,
