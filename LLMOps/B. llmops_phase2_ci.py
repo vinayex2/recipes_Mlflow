@@ -3,28 +3,34 @@
 #
 # LLMOps Phase 2 — Continuous Integration notebook
 #
-# Upload this file to your Databricks Community Edition workspace at:
+# Upload this file to your Databricks Free Edition workspace at:
 #   /Shared/llmops/llmops_phase2_ci
 #
-# This notebook is triggered by the GitHub Actions workflow via the
-# Databricks Runs Submit API.  It can also be run manually from the
-# Databricks UI for local debugging.
+# This notebook runs on SERVERLESS compute (the only option in Free Edition).
+# It is triggered by the GitHub Actions workflow via the Databricks Runs Submit
+# API and can also be run manually from the Databricks UI for debugging.
 #
 # What it does:
-#   1. Reads CI context (git SHA, PR number) from notebook parameters
-#   2. Loads the registered candidate model from MLflow Model Registry
-#   3. Runs the same frozen golden eval dataset used in Phase 1
-#   4. Applies three quality gates: rule pass rate, latency, cost
-#   5. Logs the full CI run back to MLflow with a ci/ tag namespace
-#   6. Exits with sys.exit(1) on any gate failure so the Runs API
+#   1. Installs dependencies via %pip (task-level libraries not supported on serverless)
+#   2. Reads CI context (git SHA, PR number) from notebook widget parameters
+#   3. Loads the registered candidate model from MLflow Model Registry
+#   4. Runs the same frozen golden eval dataset used in Phase 1
+#   5. Applies three quality gates: rule pass rate, latency, cost
+#   6. Logs the full CI run back to MLflow with a ci/ tag namespace
+#   7. Exits with sys.exit(1) on any gate failure so the Runs API
 #      reports result_state=FAILED, which the GitHub Actions poller
 #      translates into a failed PR check.
-#
-# Dependencies (installed by the GitHub Actions job payload):
-#   openai>=1.30.0, tiktoken>=0.7.0
-#   mlflow is pre-installed on Databricks Runtime 14.3 LTS 
 
 # COMMAND ----------
+
+# Install dependencies via %pip — this is the only supported install method
+# for notebook tasks on serverless compute in Databricks Free Edition.
+# %pip must be in the first command cell; it restarts the Python kernel.
+
+%pip install -q openai>=1.30.0 tiktoken>=0.7.0
+
+# COMMAND ----------
+
 
 # ── stdlib ────────────────────────────────────────────────────────────────────
 import json
@@ -47,7 +53,7 @@ from openai import OpenAI
 # ════════════════════════════════════════════════════════════════════════════
 # 0.  NOTEBOOK PARAMETERS
 #     Read CI context injected by the GitHub Actions workflow.
-#     When running manually from the UI, defaults are used. 
+#     When running manually from the UI, defaults are used.
 # ════════════════════════════════════════════════════════════════════════════
 
 # dbutils is available in the Databricks runtime; provide fallbacks for
@@ -68,6 +74,7 @@ GIT_REF  = dbutils.widgets.get("git_ref",  "local")
 GIT_PR   = dbutils.widgets.get("git_pr",   "")
 
 # OPENAI_API_KEY is passed as a widget parameter (secret) from GitHub Actions.
+# In a production workspace you would use Databricks Secrets instead:
 # In a production workspace you would use Databricks Secrets instead:
 #   DATABRICKS_TOKEN = dbutils.secrets.get(scope="llmops", key="DATABRICKS_TOKEN")
 DATABRICKS_TOKEN = (
