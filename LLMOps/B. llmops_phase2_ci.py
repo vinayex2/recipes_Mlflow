@@ -241,11 +241,11 @@ def download_flavor_artifact(model_name, model_alias, artifact_key):
     client = mlflow.MlflowClient()
     mv = client.get_model_version_by_alias(model_name, model_alias)
     
-    # Use the model version's source (actual storage location) instead of models:/ URI
-    model_source = mv.source
+    # For Unity Catalog models, use the models:/ URI with @ syntax for aliases
+    model_uri = f"models:/{model_name}@{model_alias}"
 
-    # Download MLmodel file from the source
-    mlmodel_path = mlflow.artifacts.download_artifacts(artifact_uri=f"{model_source}/MLmodel")
+    # Download MLmodel file
+    mlmodel_path = mlflow.artifacts.download_artifacts(artifact_uri=f"{model_uri}/MLmodel")
     with open(mlmodel_path, "r") as mlmodel_file:
         mlmodel_file_content = mlmodel_file.read()
         print("MLmodel raw content:\n", mlmodel_file_content[:500])
@@ -258,14 +258,15 @@ def download_flavor_artifact(model_name, model_alias, artifact_key):
     # Navigate to desired artifact path in flavors
     flavors = mlmodel.get("flavors", {})
     pyfunc = flavors.get("python_function", {})
-    artifacts = pyfunc.get("artifacts", {})
-    artifact_info = artifacts.get(artifact_key, {})
+    artifacts_dict = pyfunc.get("artifacts", {})
+    artifact_info = artifacts_dict.get(artifact_key, {})
     artifact_rel_path = artifact_info.get("path")
     if not artifact_rel_path:
         raise FileNotFoundError(f"Artifact {artifact_key!r} not found in MLmodel 'flavors.artifacts'.")
 
-    # Download the artifact file using the model source
-    artifact_full_path = mlflow.artifacts.download_artifacts(artifact_uri=f"{model_source}/{artifact_rel_path}")
+    # Download the artifact file
+    artifact_full_path = mlflow.artifacts.download_artifacts(artifact_uri=f"{model_uri}/{artifact_rel_path}")
+    
     # Dump and print the artifact file raw content
     with open(artifact_full_path, 'r') as f:
         artifact_file_content = f.read()
