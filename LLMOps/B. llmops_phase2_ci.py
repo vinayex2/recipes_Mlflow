@@ -53,7 +53,7 @@ import yaml
 
 #required for discovering mlflow services in databricks
 import mlflow
-mlflow.set_registry_uri("databricks-uc")
+mlflow.set_registry_uri("databricks")
 
 # COMMAND ----------
 
