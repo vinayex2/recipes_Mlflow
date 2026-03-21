@@ -723,12 +723,29 @@ def register_best_candidate(
 
         model_info = mlflow.pyfunc.log_model(
             name                    = "prompt_model",
-            python_model          = str(model_code_path),   # ← path, not instance
-            artifacts             = artifacts,
-            registered_model_name = model_name,
-            pip_requirements      = ["openai", "mlflow"],
-            signature               = signature,
+            python_model            = str(model_code_path),   # ← path, not instance
+            artifacts               = artifacts,
+            registered_model_name   = model_name,
+            pip_requirements        = ["openai", "mlflow"],
+            signature               = signature,            
         )
+
+        
+
+        # Add model alias after registration
+        mlflow_client = mlflow.client.MlflowClient()
+        latest_version = mlflow_client.search_model_versions(f"name='{model_name}'")[0].version
+
+        # Remove alias from previous model version, if exists
+        prev_versions = mlflow_client.search_model_versions(f"name='{model_name}'")
+        for v in prev_versions:
+            v_details = mlflow_client.get_model_version(model_name, v.version)
+            aliases = v_details.aliases or []
+            if "candidate" in aliases and v.version != latest_version:
+                mlflow_client.delete_registered_model_alias(model_name, "candidate")        
+        
+        # latest_version = mlflow_client.search_model_versions(f"name='{model_name}'")[0].version
+        mlflow_client.set_registered_model_alias(model_name, "candidate", latest_version)
 
     uri = model_info.model_uri
     print(f"  Registered: {uri}")
@@ -836,7 +853,7 @@ def main():
     uri = register_best_candidate(
         summaries       = summaries,
         templates       = TEMPLATES,
-        model_name      = "llmops_support_agent",
+        model_name      = "workspace.default.llmops_support_agent",
         score_threshold = 0.60,
     )
     if uri:
