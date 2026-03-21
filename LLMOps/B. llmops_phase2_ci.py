@@ -69,7 +69,6 @@ except NameError:
         widgets = _FakeWidgets()
     dbutils = _FakeDbutils()  # noqa: F841
 
-%python
 GIT_SHA = dbutils.widgets.get("git_sha") if _in_databricks else "local"
 GIT_REF = dbutils.widgets.get("git_ref") if _in_databricks else "local"
 GIT_PR = dbutils.widgets.get("git_pr") if _in_databricks else ""
