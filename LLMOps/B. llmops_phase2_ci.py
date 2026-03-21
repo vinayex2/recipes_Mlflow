@@ -249,11 +249,23 @@ def load_candidate_template() -> dict:
     run_id     = mv.run_id
     print(f"Loaded candidate: {MODEL_NAME} v{version}  (run_id={run_id[:8]}…)")
 
+    # Get the run to access tags
+    run = mlflow.MlflowClient().get_run(run_id)
+
+    # Extract the config hash from tags
+    config_hash = run.data.tags.get("template.config_hash", "")
+
+    # Construct the correct artifact path with the hash suffix
+    artifact_path = f"prompt_config_{config_hash}" if config_hash else "prompt_config"
+
+    # Download the artifact using the correct path
+    artifact = mlflow.MlflowClient().download_artifacts(run_id, artifact_path)
+
     # Download the prompt_config JSON artifact
-    artifact_dir = mlflow.artifacts.download_artifacts(
-        run_id        = run_id,
-        artifact_path = "prompt_config",
-    )
+    # artifact_dir = mlflow.artifacts.download_artifacts(
+    #     run_id        = run_id,
+    #     artifact_path = "prompt_config",
+    # )
     cfg_files = list(Path(artifact_dir).glob("*.json"))
     if not cfg_files:
         raise FileNotFoundError(
