@@ -22,7 +22,7 @@
 #
 # Dependencies (installed by the GitHub Actions job payload):
 #   openai>=1.30.0, tiktoken>=0.7.0
-#   mlflow is pre-installed on Databricks Runtime 14.3 LTS
+#   mlflow is pre-installed on Databricks Runtime 14.3 LTS 
 
 # COMMAND ----------
 
