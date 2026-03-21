@@ -41,7 +41,6 @@ from dotenv import load_dotenv
 import dbutils
 
 
-# ════════════════════════════════════════════════════════════════════════════
 # 0.  CONFIGURATION
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -51,18 +50,19 @@ load_dotenv()
 # For Databricks: set MLFLOW_TRACKING_URI="databricks" and configure
 # DATABRICKS_HOST / DATABRICKS_TOKEN in your env.
 # For local dev: leave as-is; runs land in ./mlruns
-# MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "mlruns")
-# EXPERIMENT_NAME     = os.getenv("MLFLOW_EXPERIMENT_NAME", "llmops/phase1-local-dev")
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "mlruns")
+EXPERIMENT_NAME     = os.getenv("MLFLOW_EXPERIMENT_NAME", "llmops/phase1-local-dev")
+DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN')
 
 # mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 # mlflow.set_experiment(EXPERIMENT_NAME)
-DATABRICKS_TOKEN = os.environ.get('DATABRICKS_TOKEN')
 
 # ── LLM client ──────────────────────────────────────────────────────────────
-# client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+# GEMINI_ENDPOINT lets you point at any OpenAI-compatible endpoint
+# (Azure OpenAI, Databricks Model Serving, local Ollama, etc.)
 client = OpenAI(
-  api_key=DATABRICKS_TOKEN,
-  base_url=os.environ.get('GEMINI_ENDPOINT')
+    api_key = DATABRICKS_TOKEN,
+    base_url = os.getenv("GEMINI_ENDPOINT"),   # None → defaults to api.openai.com
 )
 
 # ── Token counter (approximation for non-OpenAI models) ─────────────────────
@@ -102,7 +102,7 @@ class PromptTemplate:
     few_shots   : list[dict]  = field(default_factory=list)
     temperature : float       = 0.3
     max_tokens  : int         = 1024
-    model       : str         = "gemini-3-1-flash-lite-preview"
+    model       : str         = "gemini_3_1_flash_Newer"
 
     # ── derived ──────────────────────────────────────────────────────────────
     @property
@@ -230,11 +230,18 @@ class Conversation:
         self.history  : list[dict] = []    # running message list (no system)
         self.turns    : list[Turn] = []    # detailed turn records
 
-    # ── seed with few-shot examples ──────────────────────────────────────────
+    # ── seed with system prompt + few-shot examples ──────────────────────────
     def _build_messages(self, user_message: str) -> list[dict]:
-        """Construct the messages array: few-shots + history + new user turn."""
-        messages = list(self.template.few_shots)  # copy few-shots first
-        messages.extend(self.history)             # then real conversation
+        """
+        Construct the full messages array for the OpenAI Chat Completions API:
+          [system]  ← always first
+          [few-shot turns...]
+          [conversation history...]
+          [new user turn]
+        """
+        messages: list[dict] = [{"role": "system", "content": self.template.system}]
+        messages.extend(self.template.few_shots)   # worked examples
+        messages.extend(self.history)              # live conversation history
         messages.append({"role": "user", "content": user_message})
         return messages
 
@@ -244,16 +251,15 @@ class Conversation:
         messages = self._build_messages(user_message)
 
         t0 = time.perf_counter()
-        response = client.messages.create(
-            model      = self.template.model,
-            max_tokens = self.template.max_tokens,
-            temperature= self.template.temperature,
-            system     = self.template.system,
-            messages   = messages,
+        response = client.chat.completions.create(
+            model       = self.template.model,
+            max_tokens  = self.template.max_tokens,
+            temperature = self.template.temperature,
+            messages    = messages,
         )
         latency_ms = (time.perf_counter() - t0) * 1000
 
-        reply = response.content[0].text
+        reply = response.choices[0].message.content
 
         # ── persist history ──────────────────────────────────────────────────
         self.history.append({"role": "user",      "content": user_message})
@@ -264,8 +270,8 @@ class Conversation:
             user_message       = user_message,
             assistant_response = reply,
             latency_ms         = round(latency_ms, 1),
-            input_tokens       = response.usage.input_tokens,
-            output_tokens      = response.usage.output_tokens,
+            input_tokens       = response.usage.prompt_tokens,
+            output_tokens      = response.usage.completion_tokens,
         ))
 
         return reply
@@ -418,23 +424,27 @@ class JudgeResult:
 
 
 def llm_judge(user_message: str, response: str, eval_id: str,
-              judge_model: str = "gemini-3-1-flash-lite-preview") -> JudgeResult:
+              judge_model: str = "gemini_3_1_flash_Newer") -> JudgeResult:
     """
     Use a separate LLM to score a response on four rubric dimensions.
-    Cheaper models work well as judges for structured scoring.
+    Cheaper models (gemini_3_1_flash_Newer) work well as judges for structured scoring.
     """
     prompt = (
         f"USER MESSAGE:\n{user_message}\n\n"
         f"ASSISTANT RESPONSE:\n{response}"
     )
-    judge_response = client.messages.create(
-        model      = judge_model,
-        max_tokens = 256,
-        temperature= 0.0,   # fully deterministic for reproducibility
-        system     = JUDGE_SYSTEM,
-        messages   = [{"role": "user", "content": prompt}],
-    )
-    raw = judge_response.content[0].text.strip()
+    judge_response = client.chat.completions.create(
+        model       = judge_model,
+        max_tokens  = 256,
+        temperature = 0.0,   # fully deterministic for reproducibility
+        messages    = [
+            {"role": "system", "content": JUDGE_SYSTEM},
+            {"role": "user",   "content": prompt},
+        ],
+    )            
+    
+    raw = judge_response.choices[0].message.content.strip()
+
 
     # strip markdown fences if model wraps with ```json ... ```
     if raw.startswith("```"):
@@ -683,9 +693,10 @@ def register_best_candidate(
             with open(cfg_path) as f:
                 cfg = json.load(f)
             self.template = PromptTemplate(**cfg)
-            self._client  = OpenAI(api_key=DATABRICKS_TOKEN,
-                                   base_url=os.environ.get('GEMINI_ENDPOINT')
-                                   )
+            self._client  = OpenAI(
+                api_key  = DATABRICKS_TOKEN,
+                base_url = os.getenv("GEMINI_ENDPOINT"),
+            )
 
         def predict(self, context, model_input):
             messages = (
@@ -799,11 +810,9 @@ def interactive_demo(template: PromptTemplate = TEMPLATE_FEW_SHOT):
 # ════════════════════════════════════════════════════════════════════════════
 
 def main():
-    MLFLOW_TRACKING_URI = mlflow.get_tracking_uri()
-
     print("\nLLMOps Phase 1 — Local Experiment Runner")
     print(f"MLflow tracking URI : {MLFLOW_TRACKING_URI}")
-    print(f"Experiment          : {dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()}")
+    print(f"Experiment          : {EXPERIMENT_NAME}")
     print(f"Templates to test   : {[t.name for t in TEMPLATES]}")
     print(f"Eval cases          : {len(GOLDEN_DATASET)}")
 
