@@ -47,7 +47,6 @@ from typing import Optional
 import mlflow
 import mlflow.pyfunc
 from openai import OpenAI
-import yaml
 
 # COMMAND ----------
 

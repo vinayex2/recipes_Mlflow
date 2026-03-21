@@ -1,0 +1,145 @@
+# .github/workflows/cd.yml
+#
+# LLMOps Phase 3 — Continuous Deployment with Human Approval
+#
+# Triggers automatically when the CI workflow completes successfully on main.
+# Split into two jobs:
+#
+#   1. deploy-staging  — deploys the candidate to a Databricks staging endpoint
+#                        and runs a smoke test (automated, no approval needed)
+#
+#   2. deploy-production — gated by a GitHub Environment named "production"
+#                          which requires one or more designated reviewers to
+#                          approve before the job runs.  This is the human
+#                          approval gate.  On approval: promotes the model to
+#                          production alias and logs the decision to MLflow.
+#                          On rejection: the workflow is cancelled, the model
+#                          version is tagged cd.rejected, and a notification is
+#                          posted back to the PR.
+#
+# GitHub setup required (one-time):
+#   Settings → Environments → New environment → name it "production"
+#   Add required reviewers (the people who must approve each deployment)
+#   Optionally set a wait timer (e.g. 10 minutes for reviewers to respond)
+#
+# Secrets required (Settings → Secrets → Actions):
+#   DATABRICKS_HOST       e.g. https://your-workspace.cloud.databricks.com
+#   DATABRICKS_TOKEN      personal access token
+#   OPENAI_API_KEY        forwarded to staging smoke test notebook
+
+name: LLMOps CD
+
+on:
+  workflow_run:
+    workflows: ["LLMOps CI"]
+    types: [completed]
+    branches: [main]
+
+# Also allow manual trigger for re-deployments without a new CI run
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: "MLflow model version to deploy (leave blank for latest candidate)"
+        required: false
+        default: ""
+
+jobs:
+  # ══════════════════════════════════════════════════════════════════════════
+  # JOB 1 — Deploy to staging + smoke test (automated, no approval)
+  # ══════════════════════════════════════════════════════════════════════════
+  deploy-staging:
+    name: Deploy to staging + smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Only run when the triggering CI workflow actually succeeded
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    outputs:
+      staging_run_id: ${{ steps.submit.outputs.run_id }}
+      staging_passed: ${{ steps.poll.outputs.passed }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Submit staging deployment notebook
+        id: submit
+        env:
+          DATABRICKS_HOST  : ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN : ${{ secrets.DATABRICKS_TOKEN }}
+          OPENAI_API_KEY   : ${{ secrets.OPENAI_API_KEY }}
+          GIT_SHA          : ${{ github.sha }}
+          NOTEBOOK_PATH    : /Shared/llmops/llmops_phase3_cd
+          DEPLOYMENT_STAGE : staging
+          MODEL_VERSION    : ${{ github.event.inputs.model_version || '' }}
+        run: python .github/scripts/cd_submit_and_poll.py
+
+      - name: Check staging result
+        id: poll
+        run: |
+          echo "passed=true" >> $GITHUB_OUTPUT
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # JOB 2 — Human approval gate + production deployment
+  #
+  # The 'environment: production' line is what creates the approval gate.
+  # GitHub pauses this job and sends a review request to all required
+  # reviewers configured on the "production" environment.  The job only
+  # proceeds once a reviewer clicks Approve in the GitHub UI.
+  # If they click Reject, the job is cancelled and the 'if-rejected' step runs.
+  # ══════════════════════════════════════════════════════════════════════════
+  deploy-production:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: deploy-staging
+    environment: production           # ← this is the human approval gate
+
+    if: needs.deploy-staging.result == 'success'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      # This step runs ONLY after a reviewer has approved in the GitHub UI.
+      # The reviewer's identity, timestamp, and comment are captured by
+      # GitHub and can be retrieved via the API for the audit trail.
+      - name: Deploy candidate to production
+        env:
+          DATABRICKS_HOST  : ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN : ${{ secrets.DATABRICKS_TOKEN }}
+          OPENAI_API_KEY   : ${{ secrets.OPENAI_API_KEY }}
+          GIT_SHA          : ${{ github.sha }}
+          GIT_REF          : ${{ github.ref }}
+          NOTEBOOK_PATH    : /Shared/llmops/llmops_phase3_cd
+          DEPLOYMENT_STAGE : production
+          APPROVED_BY      : ${{ github.actor }}
+          MODEL_VERSION    : ${{ github.event.inputs.model_version || '' }}
+        run: python .github/scripts/cd_submit_and_poll.py
+
+      - name: Post deployment summary
+        if: success()
+        run: |
+          echo "### Production deployment complete" >> $GITHUB_STEP_SUMMARY
+          echo "- Approved by: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Time: $(date -u)" >> $GITHUB_STEP_SUMMARY

@@ -70,7 +70,7 @@ def submit_run() -> str:
                         "git_ref"       : os.environ.get("GIT_REF",  ""),
                         "git_pr"        : os.environ.get("GIT_PR",   ""),
                         "DATABRICKS_TOKEN": os.environ.get("DATABRICKS_TOKEN", ""),
-                "GEMINI_ENDPOINT": os.environ.get("GEMINI_ENDPOINT", ""),
+                        "GEMINI_ENDPOINT": os.environ.get("GEMINI_ENDPOINT", ""),
                     },
                     "source": "WORKSPACE",
                 },
