@@ -102,8 +102,8 @@ print(f"CI context  — SHA={GIT_SHA[:12]}  ref={GIT_REF}  PR={GIT_PR or 'none'}
 
 # On Databricks, MLflow is pre-configured to point at the workspace tracking
 # server. No MLFLOW_TRACKING_URI needed — mlflow.set_experiment() just works.
-EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "llmops/phase2-ci")
-MODEL_NAME      = os.getenv("MLFLOW_MODEL_NAME",      "llmops/support-agent")
+EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "llmops_phase2_ci")
+MODEL_NAME      = os.getenv("MLFLOW_MODEL_NAME",      "llmops_support_agent")
 MODEL_ALIAS     = os.getenv("MLFLOW_MODEL_ALIAS",     "candidate")
 
 # mlflow.set_experiment(EXPERIMENT_NAME)
