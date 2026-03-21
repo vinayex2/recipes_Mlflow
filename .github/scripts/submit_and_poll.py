@@ -1,20 +1,25 @@
 """
 .github/scripts/submit_and_poll.py
 
-Submits a one-off notebook run to Databricks Community Edition using the
-Runs Submit API (no persistent cluster or Job definition needed), then polls
-until the run completes and exits with a non-zero code on failure so GitHub
-Actions marks the check as failed.
+Submits a one-off notebook run to Databricks Free Edition using the
+Runs Submit API, then polls until the run completes and exits with a
+non-zero code on failure so GitHub Actions marks the check as failed.
 
-Databricks Community Edition constraints handled here:
-  - No Jobs API v2.1 "create job then run" — we use runs/submit instead,
-    which spins up a transient single-node cluster for one run and tears it
-    down automatically.
-  - Community Edition clusters are single-node (no worker nodes).
-  - The notebook path must already exist in the workspace.
+Databricks Free Edition constraints :
+  - Serverless compute ONLY — no custom cluster specs (node_type_id,
+    spark_version, num_workers, spark_conf) are accepted.  Sending any
+    of those fields causes a 400 Bad Request.
+  - To use serverless, omit new_cluster/existing_cluster_id entirely.
+    The API treats a task with no cluster spec as serverless by default.
+  - The payload must use the tasks[] array format (API 2.1 multi-task).
+  - Task-level libraries are not supported for notebook tasks on serverless.
+    Install packages inside the notebook using %pip instead.
+  - Environment variables are not supported — pass secrets as notebook
+    widget parameters (base_parameters) instead.
+  - Outbound internet is restricted to trusted domains; api.openai.com
+    is accessible from Free Edition workspaces.
 """
 
-import json
 import os
 import sys
 import time
@@ -34,45 +39,45 @@ HEADERS = {
 # Upload llmops_phase2_ci.py to this path via the Databricks UI or CLI.
 NOTEBOOK_PATH = "/Workspace/Users/vasaicrow@gmail.com/recipes_Mlflow/LLMOps/llmops_phase2_ci"
 
-# Community Edition: single-node cluster, smallest available node type.
-# "Runtime 14.3 LTS ML" includes MLflow pre-installed.
-CLUSTER_SPEC = {
-    "spark_version"  : "14.3.x-scala2.12",
-    "node_type_id"   : "i3.xlarge",      # CE default; adjust if yours differs
-    "num_workers"    : 0,                 # single-node (driver only)
-    "spark_conf"     : {
-        "spark.databricks.cluster.profile": "singleNode",
-        "spark.master"                    : "local[*]",
-    },
-    "custom_tags"    : {"ResourceClass": "SingleNode"},
-}
-
 POLL_INTERVAL_S = 20    # seconds between status checks
-MAX_WAIT_S      = 1800  # 30 minutes — CE clusters take a few minutes to start
+MAX_WAIT_S      = 1800  # 30 minutes
 
 
 def submit_run() -> str:
-    """Submit the notebook as a one-off run and return the run_id."""
+    """
+    Submit the notebook as a one-off serverless run and return the run_id.
+
+    Key differences from a classic cluster payload:
+      - No new_cluster block at all (serverless = omit cluster spec entirely)
+      - No top-level libraries field (not supported for serverless notebook tasks)
+      - Tasks wrapped in tasks[] array (required by API 2.1)
+      - Secrets passed as base_parameters widgets, not env vars
+    """
     payload = {
-        "run_name": (
-            f"llmops-ci-{os.environ.get('GIT_SHA', 'local')[:8]}"
-        ),
-        "new_cluster": CLUSTER_SPEC,
-        "notebook_task": {
-            "notebook_path": NOTEBOOK_PATH,
-            # Pass CI context and secrets into the notebook as parameters.
-            # The notebook reads these via dbutils.widgets.get().
-            "base_parameters": {
-                "git_sha"       : os.environ.get("GIT_SHA",  ""),
-                "git_ref"       : os.environ.get("GIT_REF",  ""),
-                "git_pr"        : os.environ.get("GIT_PR",   ""),
-                "DATABRICKS_TOKEN": os.environ.get("DATABRICKS_TOKEN", ""),
+        "run_name": f"llmops-ci-{os.environ.get('GIT_SHA', 'local')[:8]}",
+        "tasks": [
+            {
+                "task_key": "ci_quality_gates",
+                # No new_cluster / existing_cluster_id / job_cluster_key here.
+                # Omitting all cluster fields tells Databricks to use serverless.
+                "notebook_task": {
+                    "notebook_path": NOTEBOOK_PATH,
+                    # Pass CI context and the OpenAI key as notebook widget
+                    # parameters.  The notebook reads them via dbutils.widgets.get().
+                    # We cannot use environment variables on serverless compute.
+                    "base_parameters": {
+                        "git_sha"       : os.environ.get("GIT_SHA",  ""),
+                        "git_ref"       : os.environ.get("GIT_REF",  ""),
+                        "git_pr"        : os.environ.get("GIT_PR",   ""),
+                        "DATABRICKS_TOKEN": os.environ.get("DATABRICKS_TOKEN", ""),
                 "GEMINI_ENDPOINT": os.environ.get("GEMINI_ENDPOINT", ""),
-            },
-        },
-        "libraries": [
-            {"pypi": {"package": "openai>=1.30.0"}},
-            {"pypi": {"package": "tiktoken>=0.7.0"}},
+                    },
+                    "source": "WORKSPACE",
+                },
+                # Libraries are installed inside the notebook via %pip.
+                # Task-level library installs are not supported for serverless
+                # notebook tasks — omit the libraries field entirely.
+            }
         ],
     }
 
@@ -82,10 +87,17 @@ def submit_run() -> str:
         json=payload,
         timeout=30,
     )
-    resp.raise_for_status()
+
+    # Print the full response body on errors — the default raise_for_status()
+    # message hides the Databricks error_code and message that explain *why*
+    # the request was rejected (e.g. invalid cluster spec, missing fields).
+    if not resp.ok:
+        print(f"[CI] ERROR {resp.status_code}: {resp.text}", file=sys.stderr)
+        resp.raise_for_status()
+
     run_id = resp.json()["run_id"]
     print(f"[CI] Submitted run_id={run_id}")
-    print(f"[CI] View at: {HOST}/#job/0/run/{run_id}")
+    print(f"[CI] View at: {HOST}/jobs/runs/{run_id}")
     return str(run_id)
 
 
@@ -101,12 +113,24 @@ def poll_run(run_id: str) -> dict:
             params={"run_id": run_id},
             timeout=30,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            print(f"[CI] Poll error {resp.status_code}: {resp.text}", file=sys.stderr)
+            resp.raise_for_status()
+
         run = resp.json()
 
+        # Top-level run state (PENDING, RUNNING, TERMINATED, etc.)
         life_cycle = run["state"]["life_cycle_state"]
         result     = run["state"].get("result_state", "")
-        print(f"[CI] [{elapsed:>4}s] life_cycle={life_cycle}  result={result or '—'}")
+
+        # For multi-task runs, also show individual task states
+        task_states = [
+            f"{t['task_key']}={t['state'].get('result_state', t['state']['life_cycle_state'])}"
+            for t in run.get("tasks", [])
+        ]
+        task_str = "  tasks=[" + ", ".join(task_states) + "]" if task_states else ""
+
+        print(f"[CI] [{elapsed:>4}s] life_cycle={life_cycle}  result={result or '—'}{task_str}")
 
         if life_cycle in {"TERMINATED", "SKIPPED", "INTERNAL_ERROR"}:
             return run
