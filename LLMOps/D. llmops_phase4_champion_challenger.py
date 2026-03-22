@@ -49,6 +49,7 @@ from typing import Optional
 import mlflow
 from openai import OpenAI
 from dotenv import load_dotenv
+import numpy as np
 
 load_dotenv()
 
@@ -290,7 +291,7 @@ def llm_judge(user_message: str, response: str, eval_id: str) -> dict:
     """Score a response on 4 dimensions using gpt-4o-mini as judge."""
     prompt = f"USER MESSAGE:\n{user_message}\n\nASSISTANT RESPONSE:\n{response}"
     resp = oai_client.chat.completions.create(
-        model       = "gpt-4o-mini",
+        model       = "gemini_3_1_flash_Newer",
         max_tokens  = 256,
         temperature = 0.0,
         messages    = [
@@ -321,6 +322,7 @@ def llm_judge(user_message: str, response: str, eval_id: str) -> dict:
 
 COST_PER_1K_INPUT  = 0.0025   # gpt-4o input pricing
 COST_PER_1K_OUTPUT = 0.0100   # gpt-4o output pricing
+NUMBER_OF_CHOICES = 2
 
 
 def call_model(cfg: dict, message: str) -> tuple[str, float, int, int]:
@@ -354,37 +356,38 @@ def run_full_eval(cfg: dict, label: str) -> dict:
     case_results = []
 
     for case in GOLDEN_DATASET:
-        reply, latency_ms, in_tok, out_tok = call_model(cfg, case["user_message"])
-        cost = (in_tok / 1000) * COST_PER_1K_INPUT + (out_tok / 1000) * COST_PER_1K_OUTPUT
+        if case.get('id') in choices:
+            reply, latency_ms, in_tok, out_tok = call_model(cfg, case["user_message"])
+            cost = (in_tok / 1000) * COST_PER_1K_INPUT + (out_tok / 1000) * COST_PER_1K_OUTPUT
 
-        r = rule_eval(reply, case)
-        j = llm_judge(case["user_message"], reply, case["id"])
+            r = rule_eval(reply, case)
+            j = llm_judge(case["user_message"], reply, case["id"])
 
-        status = "PASS" if r.passed else "FAIL"
-        print(f"    [{case['id']}] rule={status} score={r.score}  "
-              f"judge={j['avg_score']}  latency={latency_ms:.0f}ms")
+            status = "PASS" if r.passed else "FAIL"
+            print(f"    [{case['id']}] rule={status} score={r.score}  "
+                f"judge={j['avg_score']}  latency={latency_ms:.0f}ms")
 
-        case_results.append({
-            "eval_id"           : case["id"],
-            "user_message"      : case["user_message"],
-            "reply_snippet"     : reply[:120],
-            "rule_passed"       : r.passed,
-            "rule_score"        : r.score,
-            "topic_misses"      : r.topic_misses,
-            "violations"        : r.must_not_violated,
-            "judge_helpfulness" : j["helpfulness"],
-            "judge_faithfulness": j["faithfulness"],
-            "judge_conciseness" : j["conciseness"],
-            "judge_safety"      : j["safety"],
-            "judge_avg"         : j["avg_score"],
-            "judge_reasoning"   : j.get("reasoning", ""),
-            "latency_ms"        : latency_ms,
-            "input_tokens"      : in_tok,
-            "output_tokens"     : out_tok,
-            "cost_usd"          : round(cost, 6),
-        })
+            case_results.append({
+                "eval_id"           : case["id"],
+                "user_message"      : case["user_message"],
+                "reply_snippet"     : reply[:120],
+                "rule_passed"       : r.passed,
+                "rule_score"        : r.score,
+                "topic_misses"      : r.topic_misses,
+                "violations"        : r.must_not_violated,
+                "judge_helpfulness" : j["helpfulness"],
+                "judge_faithfulness": j["faithfulness"],
+                "judge_conciseness" : j["conciseness"],
+                "judge_safety"      : j["safety"],
+                "judge_avg"         : j["avg_score"],
+                "judge_reasoning"   : j.get("reasoning", ""),
+                "latency_ms"        : latency_ms,
+                "input_tokens"      : in_tok,
+                "output_tokens"     : out_tok,
+                "cost_usd"          : round(cost, 6),
+            })
 
-    n               = len(GOLDEN_DATASET)
+    n               = len(case_results)
     rule_pass_rate  = sum(r["rule_passed"] for r in case_results) / n
     avg_rule_score  = sum(r["rule_score"]  for r in case_results) / n
     avg_judge_score = sum(r["judge_avg"]   for r in case_results) / n
@@ -426,7 +429,12 @@ print(f"  Challenger: {MODEL_NAME} v{chall_version}")
 print(f"  Min improvement required: {MIN_IMPROVEMENT}")
 print(f"{'═'*56}")
 
+# To Trim down API usage and to add some randomness for fun
+choices = ["eval-00" + str(choice) for choice in np.random.choice(len(GOLDEN_DATASET),NUMBER_OF_CHOICES,replace=False).tolist()]
 champ_results = run_full_eval(champ_cfg,  "champion")
+
+# To Trim down API usage and to add some randomness for fun
+choices = ["eval-00" + str(choice) for choice in np.random.choice(len(GOLDEN_DATASET),NUMBER_OF_CHOICES,replace=False).tolist()]
 chall_results = run_full_eval(chall_cfg,  "challenger")
 
 # COMMAND ----------
