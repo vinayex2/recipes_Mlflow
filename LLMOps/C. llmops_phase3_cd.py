@@ -49,6 +49,19 @@ mlflow.set_registry_uri("databricks-uc")
 
 # COMMAND ----------
 
+try:
+    dbutils  # noqa: F821
+    _in_databricks = True
+except NameError:
+    _in_databricks = False
+    class _W:
+        def get(self, k, d=""): return d
+    class _D:
+        widgets = _W()
+    dbutils = _D()
+
+# COMMAND ----------
+
 # dbutils.widgets.text("git_sha", "Git SHA")
 # dbutils.widgets.text("git_ref", "Git Ref")
 # dbutils.widgets.text("approved_by",  "Approved By")
@@ -66,17 +79,6 @@ GEMINI_ENDPOINT = dbutils.widgets.get("GEMINI_ENDPOINT") if _in_databricks else 
 # ════════════════════════════════════════════════════════════════════════════
 # 0.  WIDGET PARAMETERS
 # ════════════════════════════════════════════════════════════════════════════
-
-try:
-    dbutils  # noqa: F821
-    _in_databricks = True
-except NameError:
-    _in_databricks = False
-    class _W:
-        def get(self, k, d=""): return d
-    class _D:
-        widgets = _W()
-    dbutils = _D()
 
 DEPLOYMENT_STAGE = dbutils.widgets.get("deployment_stage") if _in_databricks else "staging"
 GIT_SHA          = dbutils.widgets.get("git_sha" ) if _in_databricks else          "local"
