@@ -76,11 +76,10 @@ jobs:
       - name: Submit staging deployment notebook
         id: submit
         env:
-          DATABRICKS_HOST  : ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_HOST:  ${{ vars.DATABRICKS_HOST }}
           DATABRICKS_TOKEN : ${{ secrets.DATABRICKS_TOKEN }}
-          OPENAI_API_KEY   : ${{ secrets.OPENAI_API_KEY }}
-          GIT_SHA          : ${{ github.sha }}
-          NOTEBOOK_PATH    : /Shared/llmops/llmops_phase3_cd
+          GEMINI_ENDPOINT:  ${{ secrets.GEMINI_ENDPOINT }}
+          GIT_SHA          : ${{ github.sha }}          
           DEPLOYMENT_STAGE : staging
           MODEL_VERSION    : ${{ github.event.inputs.model_version || '' }}
         run: python .github/scripts/cd_submit_and_poll.py
@@ -125,12 +124,11 @@ jobs:
       # GitHub and can be retrieved via the API for the audit trail.
       - name: Deploy candidate to production
         env:
-          DATABRICKS_HOST  : ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_HOST:  ${{ vars.DATABRICKS_HOST }}
           DATABRICKS_TOKEN : ${{ secrets.DATABRICKS_TOKEN }}
-          OPENAI_API_KEY   : ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_ENDPOINT:  ${{ secrets.GEMINI_ENDPOINT }}
           GIT_SHA          : ${{ github.sha }}
-          GIT_REF          : ${{ github.ref }}
-          NOTEBOOK_PATH    : /Shared/llmops/llmops_phase3_cd
+          GIT_REF          : ${{ github.ref }}          
           DEPLOYMENT_STAGE : production
           APPROVED_BY      : ${{ github.actor }}
           MODEL_VERSION    : ${{ github.event.inputs.model_version || '' }}
