@@ -41,6 +41,11 @@ from openai import OpenAI
 
 # COMMAND ----------
 
+#required for discovering mlflow services in databricks
+mlflow.set_registry_uri("databricks-uc")
+
+# COMMAND ----------
+
 # ════════════════════════════════════════════════════════════════════════════
 # 0.  WIDGET PARAMETERS
 # ════════════════════════════════════════════════════════════════════════════

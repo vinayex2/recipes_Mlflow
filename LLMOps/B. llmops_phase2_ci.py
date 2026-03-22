@@ -51,7 +51,6 @@ from openai import OpenAI
 # COMMAND ----------
 
 #required for discovering mlflow services in databricks
-import mlflow
 mlflow.set_registry_uri("databricks-uc")
 
 # COMMAND ----------
