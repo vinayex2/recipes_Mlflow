@@ -377,7 +377,7 @@ def run_production() -> None:
     )
     print(f"  Alias '{PRODUCTION_ALIAS}' → version {candidate_version}  DONE")
     #Remove Candidate Alias
-    mlflow_client.delete_registered_model_alias(model_name, CANDIDATE_ALIAS ,version = candidate_version)
+    mlflow_client.delete_registered_model_alias(MODEL_NAME, CANDIDATE_ALIAS ,version = candidate_version)
 
     # ── Tag the model version ─────────────────────────────────────────────────
     deployed_at = datetime.now(timezone.utc).isoformat()

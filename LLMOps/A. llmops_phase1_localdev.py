@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  LLMOps Phase 1 — Local Experiment Notebook                                 ║
+║  LLMOps Phase 1 — Local Experiment Notebook                                  ║
 ║  Conversation with an LLM + MLflow tracking                                  ║
 ║                                                                              ║
 ║  Workflow:                                                                   ║
@@ -14,7 +14,7 @@
 ║    pip install anthropic mlflow python-dotenv tiktoken                       ║
 ║                                                                              ║
 ║  Environment:                                                                ║
-║    OPEN_AI_KEY=<your key>          (or set in .env)                    ║
+║    OPEN_AI_KEY=<your key>          (or set in .env)                          ║
 ║    MLFLOW_TRACKING_URI=<uri>             (default: local ./mlruns)           ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """

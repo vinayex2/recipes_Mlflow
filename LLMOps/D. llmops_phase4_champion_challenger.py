@@ -32,7 +32,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install -q openai>=1.30.0 tiktoken>=0.7.0
+# MAGIC %pip install -q openai>=1.30.0 tiktoken>=0.7.0 dotenv
 
 # COMMAND ----------
 
@@ -48,6 +48,9 @@ from typing import Optional
 
 import mlflow
 from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # COMMAND ----------
 
@@ -71,6 +74,8 @@ except NameError:
         widgets = _W()
     dbutils = _D()
 
+_in_databricks = False    
+
 CHAMPION_VERSION   = dbutils.widgets.get("champion_version") if _in_databricks else ""
 CHALLENGER_VERSION = dbutils.widgets.get("challenger_version") if _in_databricks else ""
 # Min composite score improvement challenger must beat champion by to promote.
@@ -81,8 +86,11 @@ GIT_SHA            = dbutils.widgets.get("git_sha") if _in_databricks else "loca
 DATABRICKS_TOKEN = dbutils.widgets.get("DATABRICKS_TOKEN") if _in_databricks else os.environ.get("DATABRICKS_TOKEN", "")
 GEMINI_ENDPOINT = dbutils.widgets.get("GEMINI_ENDPOINT") if _in_databricks else os.environ.get("GEMINI_ENDPOINT", "")
 
-if not OPENAI_API_KEY:
-    raise ValueError("OPENAI_API_KEY not found. Pass as widget or env var.")
+if not DATABRICKS_TOKEN:
+    raise ValueError("DATABRICKS_TOKEN not found. Pass as widget or env var.")
+
+if not GEMINI_ENDPOINT:
+    raise ValueError("GEMINI_ENDPOINT not found. Pass as widget or env var.")
 
 print(f"Champion version  : {CHAMPION_VERSION or '(resolve from champion alias)'}")
 print(f"Challenger version: {CHALLENGER_VERSION or '(resolve from candidate alias)'}")
