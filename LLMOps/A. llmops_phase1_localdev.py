@@ -739,13 +739,14 @@ def register_best_candidate(
         mlflow_client = mlflow.client.MlflowClient()
         latest_version = mlflow_client.search_model_versions(f"name='{model_name}'")[0].version
 
-        # Remove alias from previous model version, if exists
-        prev_versions = mlflow_client.search_model_versions(f"name='{model_name}'")
-        for v in prev_versions:
-            v_details = mlflow_client.get_model_version(model_name, v.version)
-            aliases = v_details.aliases or []
-            if "candidate" in aliases and v.version != latest_version:
-                mlflow_client.delete_registered_model_alias(model_name, "candidate")        
+        # Remove alias from previous model version, if exists 
+        # No need as aliases are autoassigned to new version
+        # prev_versions = mlflow_client.search_model_versions(f"name='{model_name}'")
+        # for v in prev_versions:
+        #     v_details = mlflow_client.get_model_version(model_name, v.version)
+        #     aliases = v_details.aliases or []
+        #     if "candidate" in aliases and v.version != latest_version:
+        #         mlflow_client.delete_registered_model_alias(model_name, "candidate")        
         
         # latest_version = mlflow_client.search_model_versions(f"name='{model_name}'")[0].version
         mlflow_client.set_registered_model_alias(model_name, "candidate", latest_version)
