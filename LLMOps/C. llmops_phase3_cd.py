@@ -115,10 +115,7 @@ EXPERIMENT_NAME  = os.getenv("MLFLOW_EXPERIMENT_NAME", "llmops_phase3_cd")
 
 # mlflow.set_experiment(EXPERIMENT_NAME)
 
-oai_client    = client = OpenAI(
-                api_key  = DATABRICKS_TOKEN,
-                base_url = GEMINI_ENDPOINT,
-                )
+oai_client = OpenAI(api_key  = DATABRICKS_TOKEN,base_url = GEMINI_ENDPOINT)
 mlflow_client = mlflow.MlflowClient()
 
 # ════════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,86 @@
+# .github/workflows/champion_challenger.yml
+#
+# LLMOps Phase 4 — Champion / Challenger Promotion
+#
+# Runs on a schedule (weekly) and on manual trigger.
+# Compares the current champion model against the candidate challenger
+# using the full golden eval suite + LLM-as-judge, then either promotes
+# the challenger to champion or retains the champion — all logged to MLflow.
+#
+# Alias conventions (building on Phases 1-3):
+#   candidate   → new model version that passed CI + CD (Phase 2 & 3)
+#   production  → the live serving alias, set by Phase 3 CD
+#   champion    → winner of the most recent champion/challenger evaluation
+#                 (starts as the same version as production; updated here)
+#
+# The distinction between 'production' and 'champion':
+#   production  is set by the CD pipeline immediately after human approval
+#   champion    is set by this evaluation — it may lag production by one
+#               cycle if the challenger just passed CD but hasn't yet beaten
+#               the champion on the eval suite
+#
+# Required GitHub Secrets:
+#   DATABRICKS_HOST, DATABRICKS_TOKEN, OPENAI_API_KEY
+#
+# Required Databricks setup:
+#   Notebook uploaded to: /Shared/llmops/llmops_phase4_champion_challenger
+
+name: LLMOps Champion/Challenger
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"    # every Monday at 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      champion_version:
+        description: "Champion model version (blank = resolve from 'champion' alias)"
+        required: false
+        default: ""
+      challenger_version:
+        description: "Challenger model version (blank = resolve from 'candidate' alias)"
+        required: false
+        default: ""
+      min_improvement:
+        description: "Min composite score improvement to promote challenger (default 0.02)"
+        required: false
+        default: "0.02"
+
+jobs:
+  champion-challenger:
+    name: Champion vs Challenger evaluation
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Submit champion/challenger notebook
+        env:
+          DATABRICKS_HOST:  ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN      : ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_TOKEN : ${{ secrets.DATABRICKS_TOKEN }}
+          GEMINI_ENDPOINT:  ${{ secrets.GEMINI_ENDPOINT }}
+          GIT_SHA               : ${{ github.sha }}
+          CHAMPION_VERSION      : ${{ github.event.inputs.champion_version || '' }}
+          CHALLENGER_VERSION    : ${{ github.event.inputs.challenger_version || '' }}
+          MIN_IMPROVEMENT       : ${{ github.event.inputs.min_improvement || '0.02' }}
+          # NOTEBOOK_PATH         : /Shared/llmops/llmops_phase4_champion_challenger
+        run: python .github/scripts/champ_submit_and_poll.py
+
+      - name: Post evaluation summary to job
+        if: always()
+        run: |
+          echo "### Champion/Challenger evaluation complete" >> $GITHUB_STEP_SUMMARY
+          echo "- Triggered by: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Schedule/manual: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Time: $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "Check MLflow experiment llmops/phase4-champion-challenger for full results." >> $GITHUB_STEP_SUMMARY
