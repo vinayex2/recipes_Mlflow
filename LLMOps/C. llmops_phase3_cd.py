@@ -25,7 +25,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install -q openai>=1.30.0
+# MAGIC %pip install -q openai>=1.30.0 dotenv
 
 # COMMAND ----------
 
@@ -38,11 +38,28 @@ from pathlib import Path
 
 import mlflow
 from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # COMMAND ----------
 
 #required for discovering mlflow services in databricks
 mlflow.set_registry_uri("databricks-uc")
+
+# COMMAND ----------
+
+# dbutils.widgets.text("git_sha", "Git SHA")
+# dbutils.widgets.text("git_ref", "Git Ref")
+# dbutils.widgets.text("approved_by",  "Approved By")
+# dbutils.widgets.text("model_version",  "")
+# dbutils.widgets.text("deployment_stage",  "staging")
+# DATABRICKS_TOKEN = os.environ.get("DATABRICKS_TOKEN", "")
+# GEMINI_ENDPOINT =  os.environ.get("GEMINI_ENDPOINT", "")
+DATABRICKS_TOKEN = dbutils.widgets.get("DATABRICKS_TOKEN") if _in_databricks else os.environ.get("DATABRICKS_TOKEN", "")
+GEMINI_ENDPOINT = dbutils.widgets.get("GEMINI_ENDPOINT") if _in_databricks else os.environ.get("GEMINI_ENDPOINT", "")
+
+
 
 # COMMAND ----------
 
@@ -67,9 +84,6 @@ GIT_REF          = dbutils.widgets.get("git_ref" ) if _in_databricks else       
 APPROVED_BY      = dbutils.widgets.get("approved_by" ) if _in_databricks else     ""
 MODEL_VERSION    = dbutils.widgets.get("model_version" ) if _in_databricks else   ""
 
-DATABRICKS_TOKEN = dbutils.widgets.get("DATABRICKS_TOKEN") if _in_databricks else os.environ.get("DATABRICKS_TOKEN", "")
-GEMINI_ENDPOINT = dbutils.widgets.get("GEMINI_ENDPOINT") if _in_databricks else os.environ.get("GEMINI_ENDPOINT", "")
-
 
 if not DATABRICKS_TOKEN:
     raise ValueError(
@@ -92,7 +106,7 @@ print(f"Version    : {MODEL_VERSION or '(resolve from candidate alias)'}")
 # 1.  CONFIG
 # ════════════════════════════════════════════════════════════════════════════
 
-MODEL_NAME       = os.getenv("MLFLOW_MODEL_NAME",   "llmops_support_agent")
+MODEL_NAME       = os.getenv("MLFLOW_MODEL_NAME",   "workspace.default.llmops_support_agent")
 CANDIDATE_ALIAS  = "candidate"
 PRODUCTION_ALIAS = "production"
 EXPERIMENT_NAME  = os.getenv("MLFLOW_EXPERIMENT_NAME", "llmops_phase3_cd")
@@ -288,7 +302,7 @@ def run_staging() -> None:
             "smoke_results" : smoke_results,
             "timestamp"     : datetime.now(timezone.utc).isoformat(),
         }
-        artifact_path = Path("/dbfs/tmp") / f"{run_name}.json"
+        artifact_path = Path("/tmp") / f"{run_name}.json"
         artifact_path.write_text(json.dumps(artifact, indent=2))
         mlflow.log_artifact(str(artifact_path), artifact_path="cd_results")
 
@@ -296,7 +310,7 @@ def run_staging() -> None:
     mlflow_client.set_model_version_tag(
         name    = MODEL_NAME,
         version = candidate_version,
-        key     = "cd.staging",
+        key     = "cd_staging",
         value   = "pass" if smoke_passed else "fail",
     )
 
@@ -416,7 +430,7 @@ def run_production() -> None:
             "git_ref"                 : GIT_REF,
             "deployed_at"             : deployed_at,
         }
-        audit_path = Path("/dbfs/tmp") / f"{run_name}_audit.json"
+        audit_path = Path("/tmp") / f"{run_name}_audit.json"
         audit_path.write_text(json.dumps(audit, indent=2))
         mlflow.log_artifact(str(audit_path), artifact_path="cd_audit")
 
