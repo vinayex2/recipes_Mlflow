@@ -66,8 +66,7 @@ jobs:
       - name: Submit champion/challenger notebook
         env:
           DATABRICKS_HOST:  ${{ vars.DATABRICKS_HOST }}
-          DATABRICKS_TOKEN      : ${{ secrets.DATABRICKS_TOKEN }}
-          DATABRICKS_TOKEN : ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_TOKEN      : ${{ secrets.DATABRICKS_TOKEN }}          
           GEMINI_ENDPOINT:  ${{ secrets.GEMINI_ENDPOINT }}
           GIT_SHA               : ${{ github.sha }}
           CHAMPION_VERSION      : ${{ github.event.inputs.champion_version || '' }}
