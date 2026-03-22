@@ -382,13 +382,13 @@ def run_production() -> None:
 
     # ── Tag the model version ─────────────────────────────────────────────────
     deployed_at = datetime.now(timezone.utc).isoformat()
-    mlflow_client.set_model_version_tag(MODEL_NAME, candidate_version, "cd.production",    "deployed")
-    mlflow_client.set_model_version_tag(MODEL_NAME, candidate_version, "cd.deployed_at",   deployed_at)
-    mlflow_client.set_model_version_tag(MODEL_NAME, candidate_version, "cd.approved_by",   APPROVED_BY)
-    mlflow_client.set_model_version_tag(MODEL_NAME, candidate_version, "cd.git_sha",       GIT_SHA)
+    mlflow_client.set_model_version_tag(MODEL_NAME, candidate_version, "cd_production",    "deployed")
+    mlflow_client.set_model_version_tag(MODEL_NAME, candidate_version, "cd_deployed_at",   deployed_at)
+    mlflow_client.set_model_version_tag(MODEL_NAME, candidate_version, "cd_approved_by",   APPROVED_BY)
+    mlflow_client.set_model_version_tag(MODEL_NAME, candidate_version, "cd_git_sha",       GIT_SHA)
     if prev_production_version:
         mlflow_client.set_model_version_tag(
-            MODEL_NAME, candidate_version, "cd.replaced_version", prev_production_version
+            MODEL_NAME, candidate_version, "cd_replaced_version", prev_production_version
         )
 
     # ── Log audit run to MLflow ───────────────────────────────────────────────
