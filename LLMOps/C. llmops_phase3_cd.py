@@ -288,7 +288,7 @@ def run_staging() -> None:
             "smoke_results" : smoke_results,
             "timestamp"     : datetime.now(timezone.utc).isoformat(),
         }
-        artifact_path = Path("/tmp") / f"{run_name}.json"
+        artifact_path = Path("/dbfs/tmp") / f"{run_name}.json"
         artifact_path.write_text(json.dumps(artifact, indent=2))
         mlflow.log_artifact(str(artifact_path), artifact_path="cd_results")
 
@@ -416,7 +416,7 @@ def run_production() -> None:
             "git_ref"                 : GIT_REF,
             "deployed_at"             : deployed_at,
         }
-        audit_path = Path("/tmp") / f"{run_name}_audit.json"
+        audit_path = Path("/dbfs/tmp") / f"{run_name}_audit.json"
         audit_path.write_text(json.dumps(audit, indent=2))
         mlflow.log_artifact(str(audit_path), artifact_path="cd_audit")
 
