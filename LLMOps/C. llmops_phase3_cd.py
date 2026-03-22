@@ -97,7 +97,7 @@ CANDIDATE_ALIAS  = "candidate"
 PRODUCTION_ALIAS = "production"
 EXPERIMENT_NAME  = os.getenv("MLFLOW_EXPERIMENT_NAME", "llmops_phase3_cd")
 
-mlflow.set_experiment(EXPERIMENT_NAME)
+# mlflow.set_experiment(EXPERIMENT_NAME)
 
 oai_client    = client = OpenAI(
                 api_key  = DATABRICKS_TOKEN,
