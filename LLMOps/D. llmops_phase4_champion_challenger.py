@@ -71,12 +71,12 @@ except NameError:
         widgets = _W()
     dbutils = _D()
 
-CHAMPION_VERSION   = dbutils.widgets.get("champion_version",   "")
-CHALLENGER_VERSION = dbutils.widgets.get("challenger_version", "")
+CHAMPION_VERSION   = dbutils.widgets.get("champion_version") if _in_databricks else ""
+CHALLENGER_VERSION = dbutils.widgets.get("challenger_version") if _in_databricks else ""
 # Min composite score improvement challenger must beat champion by to promote.
 # Default 0.02 = challenger must score at least 2 percentage points higher.
-MIN_IMPROVEMENT    = float(dbutils.widgets.get("min_improvement", "0.02"))
-GIT_SHA            = dbutils.widgets.get("git_sha", "local")
+MIN_IMPROVEMENT    = float(dbutils.widgets.get("min_improvement") if _in_databricks else "0.02")
+GIT_SHA            = dbutils.widgets.get("git_sha") if _in_databricks else "local"
 
 DATABRICKS_TOKEN = dbutils.widgets.get("DATABRICKS_TOKEN") if _in_databricks else os.environ.get("DATABRICKS_TOKEN", "")
 GEMINI_ENDPOINT = dbutils.widgets.get("GEMINI_ENDPOINT") if _in_databricks else os.environ.get("GEMINI_ENDPOINT", "")
