@@ -70,6 +70,17 @@ jobs:
             echo "No .pi directory found in repository workspace"
           fi
 
+      - name: Validate OPENROUTER_APIKEY availability
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          if [ -z "${{ secrets.OPENROUTER_APIKEY }}" ]; then
+            echo "❌ ERROR: OPENROUTER_APIKEY secret is not set in repository secrets"
+            echo "Please add OPENROUTER_APIKEY to your GitHub repository secrets before running this workflow."
+            exit 1
+          else
+            echo "✅ OPENROUTER_APIKEY secret is available"
+          fi
+
       - name: Test Pi Agent Configuration
         if: steps.changed-files.outputs.any_changed == 'true'
         run: |
