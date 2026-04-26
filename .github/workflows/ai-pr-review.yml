@@ -81,7 +81,7 @@ jobs:
         env:
           # IMPORTANT: Add your LLM API Key to your GitHub repository secrets.
           # Change this to ANTHROPIC_API_KEY if you are using Claude.          
-          apiKey: ${{ secrets.OPENROUTER_APIKEY }}
+          OPENROUTER_APIKEY: ${{ secrets.OPENROUTER_APIKEY }}
         run: |
           SUMMARY_FILE="pr_review_summary.md"
           
