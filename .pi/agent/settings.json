@@ -1,0 +1,6 @@
+{
+  "lastChangelogVersion": "0.66.1",
+  "defaultProvider": "openrouter",
+  "defaultModel": "inclusionai/ling-2.6-1t:free",
+  "hideThinkingBlock": true
+}

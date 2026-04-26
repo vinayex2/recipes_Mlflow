@@ -52,8 +52,8 @@ jobs:
         if: steps.changed-files.outputs.any_changed == 'true'
         env:
           # IMPORTANT: Add your LLM API Key to your GitHub repository secrets.
-          # Change this to ANTHROPIC_API_KEY if you are using Claude.
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # Change this to ANTHROPIC_API_KEY if you are using Claude.          
+          apiKey: ${{ secrets.APIKEY }}
         run: |
           SUMMARY_FILE="pr_review_summary.md"
           

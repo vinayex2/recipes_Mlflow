@@ -1,0 +1,14 @@
+{
+  "providers": {
+    "openrouter": {
+      "type": "api_key",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "api": "openai-completions",      
+      "models": [
+        {
+          "id": "inclusionai/ling-2.6-1t:free"
+        }
+      ]
+    }
+  }
+}
