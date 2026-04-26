@@ -33,6 +33,13 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Print environment variables
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          echo "=== Environment Variables ==="
+          env | sort
+          echo "=== End Environment Variables ==="
+
       - name: Install Pi Agent from Source
         if: steps.changed-files.outputs.any_changed == 'true'
         run: |
