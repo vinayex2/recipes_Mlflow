@@ -65,7 +65,7 @@ jobs:
           # Iterate over all changed python files
           for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
             # Ensure the file still exists (ignore deleted files)
-            if[ -f "$file" ]; then
+            if [ -f "$file" ]; then
               echo "Analyzing $file..."
               
               echo "## Review for \`$file\`" >> $SUMMARY_FILE
