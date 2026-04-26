@@ -78,7 +78,8 @@ jobs:
             echo "Please add OPENROUTER_APIKEY to your GitHub repository secrets before running this workflow."
             exit 1
           else
-            echo "✅ OPENROUTER_APIKEY secret is available"
+            APIKEY_LENGTH=$(echo -n "${{ secrets.OPENROUTER_APIKEY }}" | wc -c)
+            echo "✅ OPENROUTER_APIKEY secret is available (length: $APIKEY_LENGTH characters)"
           fi
 
       - name: Test Pi Agent Configuration
