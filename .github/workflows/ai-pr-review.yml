@@ -48,6 +48,26 @@ jobs:
           # Let's verify it built correctly
           /tmp/pi-mono/pi-test.sh --version || echo "Pi agent built successfully"
 
+      - name: Install local Pi config to home
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          if [ -d "${GITHUB_WORKSPACE}/.pi" ]; then
+            mkdir -p ~/.pi/agent
+            rm -f ~/.pi/agent/models.json ~/.pi/agent/settings.json
+            cp "${GITHUB_WORKSPACE}/.pi/agent/models.json" ~/.pi/agent/models.json
+            cp "${GITHUB_WORKSPACE}/.pi/agent/settings.json" ~/.pi/agent/settings.json
+            echo "Installed .pi/agent/models.json and .pi/agent/settings.json to ~/.pi/agent"
+            ls -la ~/.pi/agent
+          else
+            echo "No .pi directory found in repository workspace"
+          fi
+
+      - name: Test Pi Agent Configuration
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          # Run a quick test prompt through the Pi agent to verify configuration and runtime behavior
+          /tmp/pi-mono/pi-test.sh "You are a test harness. Reply with 'pi agent is configured correctly' if the prompt is received and processed successfully."
+
       - name: Run Code Review
         if: steps.changed-files.outputs.any_changed == 'true'
         env:
