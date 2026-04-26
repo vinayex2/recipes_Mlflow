@@ -13,6 +13,10 @@ jobs:
   code-review:
     name: Review Updated Python Files
     runs-on: ubuntu-latest
+    env:
+          # IMPORTANT: Add your LLM API Key to your GitHub repository secrets.
+          # Change this to ANTHROPIC_API_KEY if you are using Claude.          
+          OPENROUTER_APIKEY: ${{ secrets.OPENROUTER_APIKEY }}
 
     steps:
       - name: Checkout repository
@@ -89,11 +93,7 @@ jobs:
           /tmp/pi-mono/pi-test.sh "You are a test harness. Reply with 'pi agent is configured correctly' if the prompt is received and processed successfully."
 
       - name: Run Code Review
-        if: steps.changed-files.outputs.any_changed == 'true'
-        env:
-          # IMPORTANT: Add your LLM API Key to your GitHub repository secrets.
-          # Change this to ANTHROPIC_API_KEY if you are using Claude.          
-          OPENROUTER_APIKEY: ${{ secrets.OPENROUTER_APIKEY }}
+        if: steps.changed-files.outputs.any_changed == 'true'        
         run: |
           SUMMARY_FILE="pr_review_summary.md"
           
