@@ -1,7 +1,7 @@
 """
 llmops_core/evaluators.py
 
-Shared evaluators used across all phases and all projects.
+Shared evaluators used across all phases and all projects
 Both evaluators are stateless functions — they take a response string and a
 case dict (from the project's golden dataset) and return a result dataclass.
 
