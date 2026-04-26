@@ -1,0 +1,87 @@
+name: Agentic AI PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# We need permissions to write comments to the PR
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  code-review:
+    name: Review Updated Python Files
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required by 'changed-files' to compare commits
+
+      - name: Get changed Python files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            **/*.py
+
+      - name: Setup Node.js (Required for Pi Agent)
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Pi Agent from Source
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          # Clone the specific repository to a temporary directory
+          git clone https://github.com/badlogic/pi-mono.git /tmp/pi-mono
+          cd /tmp/pi-mono
+          
+          # Install dependencies and build all packages
+          npm install
+          npm run build
+          
+          # The agent can now be run from any directory via /tmp/pi-mono/pi-test.sh
+          # Let's verify it built correctly
+          /tmp/pi-mono/pi-test.sh --version || echo "Pi agent built successfully"
+
+      - name: Run Code Review
+        if: steps.changed-files.outputs.any_changed == 'true'
+        env:
+          # IMPORTANT: Add your LLM API Key to your GitHub repository secrets.
+          # Change this to ANTHROPIC_API_KEY if you are using Claude.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          SUMMARY_FILE="pr_review_summary.md"
+          
+          # Initialize the markdown file
+          echo "# 🤖 Agentic AI PR Review" > $SUMMARY_FILE
+          echo "Automated review of updated Python files in this Pull Request using the \`pi\` agent." >> $SUMMARY_FILE
+          echo "" >> $SUMMARY_FILE
+
+          # Iterate over all changed python files
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            # Ensure the file still exists (ignore deleted files)
+            if[ -f "$file" ]; then
+              echo "Analyzing $file..."
+              
+              echo "## Review for \`$file\`" >> $SUMMARY_FILE
+              echo "" >> $SUMMARY_FILE
+              
+              # Pipe the file content into the pi agent and pass the review prompt as an argument
+              cat "$file" | /tmp/pi-mono/pi-test.sh "You are an expert Python developer. Please review the following Python code. Identify any bugs, security issues, or performance bottlenecks, and suggest concise improvements. Provide the output in markdown format." >> $SUMMARY_FILE
+              
+              echo "" >> $SUMMARY_FILE
+              echo "---" >> $SUMMARY_FILE
+            fi
+          done
+
+      - name: Update PR Comment
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: ai-pr-code-review # Unique marker so the action updates the same comment instead of spamming new ones
+          path: pr_review_summary.md

@@ -1,0 +1,133 @@
+# projects/code_reviewer/project.yaml
+#
+# Per-project config for an AI code review agent.
+# Uses the exact same shared pipeline — only this file changes.
+
+project:
+  name: code-reviewer
+  mlflow_experiment: llmops/code-reviewer
+  mlflow_model_name: workspace.default.llmops_code_reviewer
+  judge_model: gemini_3_1_flash_Newer
+  score_threshold: 0.65   # stricter threshold for code review accuracy
+
+gates:
+  ci_rule_pass_rate:  0.85   # higher bar — code review errors are costly
+  ci_avg_latency_ms:  12000  # code review is allowed to be slower
+  ci_avg_cost_usd:    0.08
+  cc_min_improvement: 0.03
+
+cost:
+  per_1k_input_usd:  0.0025
+  per_1k_output_usd: 0.0100
+
+templates:
+
+  - name: code-review-zero-shot
+    version: "1.0.0"
+    model: gemini_3_1_flash_Newer
+    temperature: 0.1
+    max_tokens: 2048
+    system: |
+      You are a senior software engineer performing code review.
+      For each piece of code submitted:
+      - Identify bugs, security issues, and performance problems.
+      - Suggest concrete improvements with corrected code snippets.
+      - Note positive patterns worth keeping.
+      - Be concise: one bullet per issue, ordered by severity.
+      - End with: "Overall assessment: [Approve / Request changes]"
+    few_shots: []
+
+  - name: code-review-few-shot
+    version: "1.0.0"
+    model: gemini_3_1_flash_Newer
+    temperature: 0.1
+    max_tokens: 2048
+    system: |
+      You are a senior software engineer performing code review.
+      For each piece of code submitted:
+      - Identify bugs, security issues, and performance problems.
+      - Suggest concrete improvements with corrected code snippets.
+      - Note positive patterns worth keeping.
+      - Be concise: one bullet per issue, ordered by severity.
+      - End with: "Overall assessment: [Approve / Request changes]"
+    few_shots:
+      - role: user
+        content: |
+          def get_user(user_id):
+              conn = db.connect()
+              result = conn.execute(f"SELECT * FROM users WHERE id = {user_id}")
+              return result.fetchone()
+      - role: assistant
+        content: |
+          - [Critical] SQL injection: use parameterised queries —
+            `conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))`
+          - [High] Connection not closed: wrap in `with db.connect() as conn:`
+            or call `conn.close()` in a finally block.
+          - [Low] `SELECT *` fetches all columns; select only what you need.
+
+          Overall assessment: Request changes
+
+golden_dataset:
+
+  - id: eval-001
+    user_message: |
+      def add(a, b):
+          return a + b
+    expected_topics: [approve, "no issues", clean, simple]
+    must_not_contain: [bug, error, security]
+    max_words: 80
+
+  - id: eval-002
+    user_message: |
+      password = "hunter2"
+      query = f"SELECT * FROM users WHERE pass = '{password}'"
+    expected_topics: [injection, hardcoded, security, parameteris]
+    must_not_contain: [approve]
+    max_words: 200
+
+  - id: eval-003
+    user_message: |
+      for i in range(len(items)):
+          process(items[i])
+    expected_topics: [enumerate, pythonic, range]
+    must_not_contain: [critical, security]
+    max_words: 120
+
+  - id: eval-004
+    user_message: "What's the best restaurant in town?"
+    expected_topics: [outside, scope, "code review", cannot]
+    must_not_contain: [restaurant]
+    max_words: 80
+
+  - id: eval-005
+    user_message: |
+      try:
+          result = int(user_input)
+      except:
+          pass
+    expected_topics: [bare except, specific, ValueError, swallow]
+    must_not_contain: [approve]
+    max_words: 150
+
+smoke_probes:
+
+  - id: smoke-001
+    user_message: |
+      def hello():
+          print("hello world")
+    must_contain: [approve]
+    must_not_contain: [critical, security]
+    max_latency_ms: 12000
+
+  - id: smoke-002
+    user_message: |
+      query = f"SELECT * FROM t WHERE id = {user_id}"
+    must_contain: [injection]
+    must_not_contain: [approve]
+    max_latency_ms: 12000
+
+  - id: smoke-003
+    user_message: "What's the weather like today?"
+    must_contain: []
+    must_not_contain: [weather, sunny, rain]
+    max_latency_ms: 12000

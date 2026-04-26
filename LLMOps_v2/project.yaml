@@ -1,0 +1,152 @@
+# projects/support_agent/project.yaml
+#
+# All project-specific config for the Acme support agent.
+# The shared pipeline code in llmops_core/ reads this file — nothing
+# project-specific lives in the pipeline scripts themselves.
+
+project:
+  name: support-agent
+  mlflow_experiment: llmops/support-agent
+  mlflow_model_name: workspace.default.llmops_support_agent
+  judge_model: gemini_3_1_flash_Newer
+  score_threshold: 0.60
+
+gates:
+  ci_rule_pass_rate:  0.80   # min fraction of eval cases passing rule eval
+  ci_avg_latency_ms:  8000   # max avg latency per call (ms)
+  ci_avg_cost_usd:    0.05   # max avg cost per call (USD)
+  cc_min_improvement: 0.02   # challenger must beat champion by this much
+
+cost:
+  per_1k_input_usd:  0.0025
+  per_1k_output_usd: 0.0100
+
+# ── Prompt templates ──────────────────────────────────────────────────────────
+# Add, remove, or edit templates here. The experiment runner evaluates all of
+# them and registers the best-scoring one as the candidate.
+
+templates:
+
+  - name: zero-shot-support
+    version: "1.0.0"
+    model: gemini_3_1_flash_Newer
+    temperature: 0.2
+    max_tokens: 1024
+    system: |
+      You are a helpful, concise customer support agent for Acme SaaS.
+      Rules:
+      - Answer only questions about Acme products.
+      - If you don't know, say so clearly — never fabricate.
+      - Keep replies under 150 words unless detail is essential.
+      - Always end with: "Is there anything else I can help with?"
+    few_shots: []
+
+  - name: few-shot-support
+    version: "1.0.0"
+    model: gemini_3_1_flash_Newer
+    temperature: 0.2
+    max_tokens: 1024
+    system: |
+      You are a helpful, concise customer support agent for Acme SaaS.
+      Rules:
+      - Answer only questions about Acme products.
+      - If you don't know, say so clearly — never fabricate.
+      - Keep replies under 150 words unless detail is essential.
+      - Always end with: "Is there anything else I can help with?"
+    few_shots:
+      - role: user
+        content: "How do I reset my password?"
+      - role: assistant
+        content: |
+          To reset your password: visit the login page, click 'Forgot password',
+          and enter your email. You'll receive a reset link within 2 minutes.
+          Check your spam folder if it doesn't arrive.
+
+          Is there anything else I can help with?
+      - role: user
+        content: "What payment methods do you accept?"
+      - role: assistant
+        content: |
+          Acme accepts Visa, Mastercard, American Express, and PayPal.
+          Annual plans can also be paid by bank transfer — contact
+          billing@acme.example for details.
+
+          Is there anything else I can help with?
+
+  - name: cot-support
+    version: "1.0.0"
+    model: gemini_3_1_flash_Newer
+    temperature: 0.4
+    max_tokens: 1024
+    system: |
+      You are a helpful customer support agent for Acme SaaS.
+      Before answering, briefly think through the customer's need in
+      a <thinking> block (not shown to the customer), then provide your
+      final answer in an <answer> block.
+
+      Rules:
+      - Answer only questions about Acme products.
+      - If you don't know, say so clearly — never fabricate.
+      - Keep the <answer> under 150 words.
+      - Always end the <answer> with: "Is there anything else I can help with?"
+    few_shots: []
+
+# ── Golden evaluation dataset ─────────────────────────────────────────────────
+# NEVER tune prompts against this set. It exists only for measurement.
+# Add cases here when new failure modes are discovered in production.
+
+golden_dataset:
+
+  - id: eval-001
+    user_message: "How do I cancel my subscription?"
+    expected_topics: [cancel, subscription, account]
+    must_not_contain: [competitor, "I cannot help"]
+    max_words: 160
+
+  - id: eval-002
+    user_message: "My invoice shows the wrong amount, what do I do?"
+    expected_topics: [invoice, billing, support, contact]
+    must_not_contain: []
+    max_words: 160
+
+  - id: eval-003
+    user_message: "Does Acme integrate with Salesforce?"
+    expected_topics: [integrat, salesforce]
+    must_not_contain: []
+    max_words: 160
+
+  - id: eval-004
+    user_message: "What is the capital of France?"
+    expected_topics: ["don't know", cannot, outside, Acme]
+    must_not_contain: [Paris]
+    max_words: 120
+
+  - id: eval-005
+    user_message: "How do I add a team member to my account?"
+    expected_topics: [team, member, invite, add, account]
+    must_not_contain: []
+    max_words: 160
+
+# ── CD smoke probes ───────────────────────────────────────────────────────────
+# Faster than the full golden dataset — used in Phase 3 staging.
+# One happy-path, one common flow, one out-of-scope trap.
+
+smoke_probes:
+
+  - id: smoke-001
+    user_message: "How do I reset my password?"
+    must_contain: [password, reset]
+    must_not_contain: []
+    max_latency_ms: 8000
+
+  - id: smoke-002
+    user_message: "How do I cancel my subscription?"
+    must_contain: [cancel, subscription]
+    must_not_contain: []
+    max_latency_ms: 8000
+
+  - id: smoke-003
+    user_message: "What is the capital of France?"
+    must_contain: []
+    must_not_contain: [Paris]
+    max_latency_ms: 8000
