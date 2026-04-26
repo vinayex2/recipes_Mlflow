@@ -1,0 +1,213 @@
+# Azure DevOps Pipeline for Agentic AI PR Review
+# Converted from GitHub Actions workflow
+
+trigger: none  # Manual trigger only
+
+pr:
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+    - '**/*.py'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - name: NODE_VERSION
+    value: '20.x'
+
+stages:
+- stage: CodeReview
+  displayName: 'Review Updated Python Files'
+  condition: and(succeeded(), eq(variables['Build.Reason'], 'PullRequest'))
+
+  jobs:
+  - job: ReviewPythonFiles
+    displayName: 'Review Python Files with Pi Agent'
+
+    steps:
+    - checkout: self
+      fetchDepth: 0  # Required to compare commits
+
+    - task: PowerShell@2
+      displayName: 'Get changed Python files'
+      name: changedFiles
+      inputs:
+        targetType: 'inline'
+        script: |
+          $changedFiles = git diff --name-only HEAD~1 | Where-Object { $_ -like "*.py" -and (Test-Path $_) }
+          if ($changedFiles) {
+            Write-Host "##vso[task.setvariable variable=anyChanged;isOutput=true]true"
+            Write-Host "##vso[task.setvariable variable=allChangedFiles;isOutput=true]$($changedFiles -join ',')"
+            Write-Host "Found changed Python files: $($changedFiles -join ', ')"
+          } else {
+            Write-Host "##vso[task.setvariable variable=anyChanged;isOutput=true]false"
+            Write-Host "No Python files changed"
+          }
+
+    - task: NodeTool@0
+      displayName: 'Setup Node.js $(NODE_VERSION)'
+      condition: eq(variables['changedFiles.anyChanged'], 'true')
+      inputs:
+        versionSpec: '$(NODE_VERSION)'
+
+    - task: PowerShell@2
+      displayName: 'Print environment variables'
+      condition: eq(variables['changedFiles.anyChanged'], 'true')
+      inputs:
+        targetType: 'inline'
+        script: |
+          Write-Host "=== Environment Variables ==="
+          Get-ChildItem env: | Sort-Object Name | ForEach-Object { Write-Host "$($_.Name): $($_.Value)" }
+          Write-Host "=== End Environment Variables ==="
+
+    - task: PowerShell@2
+      displayName: 'Install Pi Agent from Source'
+      condition: eq(variables['changedFiles.anyChanged'], 'true')
+      inputs:
+        targetType: 'inline'
+        script: |
+          # Clone the specific repository to a temporary directory
+          git clone https://github.com/badlogic/pi-mono.git /tmp/pi-mono
+          Set-Location /tmp/pi-mono
+
+          # Install dependencies and build all packages
+          npm install
+          npm run build
+
+          # The agent can now be run from any directory via /tmp/pi-mono/pi-test.sh
+          # Let's verify it built correctly
+          try {
+            & /tmp/pi-mono/pi-test.sh --version
+            Write-Host "Pi agent built successfully"
+          } catch {
+            Write-Host "Pi agent build verification failed, but continuing..."
+          }
+
+    - task: PowerShell@2
+      displayName: 'Install local Pi config to home'
+      condition: eq(variables['changedFiles.anyChanged'], 'true')
+      inputs:
+        targetType: 'inline'
+        script: |
+          $piDir = "$(Build.SourcesDirectory)/.pi"
+          if (Test-Path $piDir) {
+            $homePiDir = "$env:HOME/.pi/agent"
+            New-Item -ItemType Directory -Force -Path $homePiDir | Out-Null
+
+            # Remove existing config files
+            Remove-Item "$homePiDir/models.json" -ErrorAction SilentlyContinue
+            Remove-Item "$homePiDir/settings.json" -ErrorAction SilentlyContinue
+            Remove-Item "$homePiDir/auth.json" -ErrorAction SilentlyContinue
+
+            # Copy new config files
+            Copy-Item "$piDir/agent/models.json" "$homePiDir/models.json"
+            Copy-Item "$piDir/agent/settings.json" "$homePiDir/settings.json"
+            Copy-Item "$piDir/agent/auth.json" "$homePiDir/auth.json"
+
+            Write-Host "Installed .pi/agent/models.json, .pi/agent/settings.json, and .pi/agent/auth.json to ~/.pi/agent"
+            Get-ChildItem $homePiDir
+          } else {
+            Write-Host "No .pi directory found in repository workspace"
+          }
+
+    - task: PowerShell@2
+      displayName: 'Validate OPENROUTER_APIKEY availability'
+      condition: eq(variables['changedFiles.anyChanged'], 'true')
+      inputs:
+        targetType: 'inline'
+        script: |
+          $apiKey = "$(OPENROUTER_APIKEY)"
+          if ([string]::IsNullOrEmpty($apiKey)) {
+            Write-Error "❌ ERROR: OPENROUTER_APIKEY variable is not set"
+            Write-Host "Please set OPENROUTER_APIKEY in your pipeline variables or variable group."
+            exit 1
+          } else {
+            $keyLength = $apiKey.Length
+            Write-Host "✅ OPENROUTER_APIKEY is available (length: $keyLength characters)"
+          }
+
+    - task: PowerShell@2
+      displayName: 'Test Pi Agent Configuration'
+      condition: eq(variables['changedFiles.anyChanged'], 'true')
+      env:
+        OPENROUTER_APIKEY: $(OPENROUTER_APIKEY)
+      inputs:
+        targetType: 'inline'
+        script: |
+          # Run a quick test prompt through the Pi agent to verify configuration and runtime behavior
+          $testPrompt = "You are a test harness. Reply with 'pi agent is configured correctly' if the prompt is received and processed successfully."
+          try {
+            $output = & /tmp/pi-mono/pi-test.sh $testPrompt 2>&1
+            Write-Host "Pi agent test output: $output"
+          } catch {
+            Write-Warning "Pi agent test failed: $_"
+          }
+
+    - task: PowerShell@2
+      displayName: 'Run Code Review'
+      condition: eq(variables['changedFiles.anyChanged'], 'true')
+      env:
+        OPENROUTER_APIKEY: $(OPENROUTER_APIKEY)
+      inputs:
+        targetType: 'inline'
+        script: |
+          $summaryFile = "pr_review_summary.md"
+
+          # Initialize the markdown file
+          @"
+# 🤖 Agentic AI PR Review
+Automated review of updated Python files in this Pull Request using the \`pi\` agent.
+
+"@ | Out-File -FilePath $summaryFile -Encoding UTF8
+
+          # Get changed files and iterate
+          $changedFiles = "$(changedFiles.allChangedFiles)" -split ','
+          foreach ($file in $changedFiles) {
+            $file = $file.Trim()
+            if ([string]::IsNullOrEmpty($file)) { continue }
+
+            # Ensure the file still exists (ignore deleted files)
+            if (Test-Path $file) {
+              Write-Host "Analyzing $file..."
+
+              # Add section header
+              @"
+
+## Review for `$file`
+
+"@ | Out-File -FilePath $summaryFile -Append -Encoding UTF8
+
+              # Pipe the file content into the pi agent and pass the review prompt as an argument
+              $reviewPrompt = "You are an expert Python developer. Please review the following Python code. Identify any bugs, security issues, or performance bottlenecks, and suggest concise improvements. Provide the output in markdown format."
+              try {
+                $content = Get-Content $file -Raw
+                $output = $content | & /tmp/pi-mono/pi-test.sh $reviewPrompt 2>&1
+                $output | Out-File -FilePath $summaryFile -Append -Encoding UTF8
+              } catch {
+                Write-Warning "Failed to analyze $file`: $_"
+                "Error analyzing file: $_" | Out-File -FilePath $summaryFile -Append -Encoding UTF8
+              }
+
+              # Add separator
+              @"
+
+---
+"@ | Out-File -FilePath $summaryFile -Append -Encoding UTF8
+            }
+          }
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish PR Review Summary'
+      condition: eq(variables['changedFiles.anyChanged'], 'true')
+      inputs:
+        PathtoPublish: 'pr_review_summary.md'
+        ArtifactName: 'PRReviewSummary'
+        publishLocation: 'Container'
+
+    # Note: Azure DevOps doesn't have a direct equivalent to GitHub's sticky PR comments
+    # You would need to use the REST API or a custom task to post comments to the PR
+    # For now, the summary is published as a build artifact
