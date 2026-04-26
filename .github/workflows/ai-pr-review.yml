@@ -60,10 +60,11 @@ jobs:
         run: |
           if [ -d "${GITHUB_WORKSPACE}/.pi" ]; then
             mkdir -p ~/.pi/agent
-            rm -f ~/.pi/agent/models.json ~/.pi/agent/settings.json
+            rm -f ~/.pi/agent/models.json ~/.pi/agent/settings.json ~/.pi/agent/auth.json
             cp "${GITHUB_WORKSPACE}/.pi/agent/models.json" ~/.pi/agent/models.json
             cp "${GITHUB_WORKSPACE}/.pi/agent/settings.json" ~/.pi/agent/settings.json
-            echo "Installed .pi/agent/models.json and .pi/agent/settings.json to ~/.pi/agent"
+            cp "${GITHUB_WORKSPACE}/.pi/agent/auth.json" ~/.pi/agent/auth.json
+            echo "Installed .pi/agent/models.json, .pi/agent/settings.json, and .pi/agent/auth.json to ~/.pi/agent"
             ls -la ~/.pi/agent
           else
             echo "No .pi directory found in repository workspace"
@@ -80,7 +81,7 @@ jobs:
         env:
           # IMPORTANT: Add your LLM API Key to your GitHub repository secrets.
           # Change this to ANTHROPIC_API_KEY if you are using Claude.          
-          apiKey: ${{ secrets.APIKEY }}
+          apiKey: ${{ secrets.OPENROUTER_APIKEY }}
         run: |
           SUMMARY_FILE="pr_review_summary.md"
           
