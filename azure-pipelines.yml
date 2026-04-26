@@ -214,45 +214,9 @@ Automated review of updated Python files in this Pull Request using the \`pi\` a
       env:
         SYSTEM_ACCESSTOKEN: $(System.AccessToken)
       inputs:
-        targetType: 'inline'
-        script: |
-          if ([string]::IsNullOrEmpty($env:SYSTEM_PULLREQUEST_PULLREQUESTID)) {
-            Write-Host 'Skipping PR comment: not running in a PR context.'
-            exit 0
-          }
-
-          $summaryFile = 'pr_review_summary.md'
-          if (-not (Test-Path $summaryFile)) {
-            Write-Error "Summary file not found: $summaryFile"
-            exit 1
-          }
-
-          $body = Get-Content -Raw -Path $summaryFile
-          $comment = [ordered]@{
-            comments = @(
-              [ordered]@{
-                parentCommentId = 0
-                content = $body
-                commentType = 1
-              }
-            )
-            status = 'active'
-          }
-
-          $collectionUri = $env:SYSTEM_COLLECTIONURI.TrimEnd('/')
-          $project = $env:SYSTEM_TEAMPROJECT
-          $repoId = $env:BUILD_REPOSITORY_ID
-          $prId = $env:SYSTEM_PULLREQUEST_PULLREQUESTID
-          $uri = "$collectionUri/$project/_apis/git/repositories/$repoId/pullRequests/$prId/threads?api-version=7.1-preview.1"
-
-          Write-Host "Posting PR comment to $uri"
-          try {
-            Invoke-RestMethod -Uri $uri -Method Post -Headers @{ Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN" } -ContentType 'application/json' -Body ($comment | ConvertTo-Json -Depth 10)
-            Write-Host '✅ PR comment posted successfully.'
-          } catch {
-            Write-Error "Failed to post PR comment: $_"
-            exit 1
-          }
+        targetType: 'filePath'
+        filePath: '$(Build.SourcesDirectory)/.github/scripts/post-pr-comment.ps1'
+        arguments: 'pr_review_summary.md'
 
     # Note: Azure DevOps doesn't have a direct equivalent to GitHub's sticky PR comments
     # You would need to use the REST API or a custom task to post comments to the PR
